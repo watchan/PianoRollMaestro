@@ -10,6 +10,7 @@
 		0CBA9043F699E2B8C2906B39 /* CoreAudio.framework */ = {isa = PBXBuildFile; fileRef = 64D6008F1ED927217E814F23; };
 		0FF226C1B1D6F3CAA8CDA920 /* include_juce_graphics.mm */ = {isa = PBXBuildFile; fileRef = 29D0366E50051E34D121198A; };
 		208F1D0685F54C6EFD7D2D5D /* include_juce_graphics_Harfbuzz.cpp */ = {isa = PBXBuildFile; fileRef = B5C4BA3595A7CE654B05FC31; };
+		2F1D82C17951661DD1F5C907 /* MidiInputRouter.cpp */ = {isa = PBXBuildFile; fileRef = F326C370C5B61F33623863DD; };
 		36277FBD22598F240CC8D534 /* Metal.framework */ = {isa = PBXBuildFile; fileRef = 68E031AE46EA90C431BDD294; settings = { ATTRIBUTES = (Weak, ); }; };
 		3DE149F540BAB57C7A2E8251 /* MainEditorComponent.cpp */ = {isa = PBXBuildFile; fileRef = CAB4D9E3CEC3AC36D7357CF6; };
 		4A1D789AE4F51BD8782CA5D7 /* include_juce_audio_devices.mm */ = {isa = PBXBuildFile; fileRef = 794500850A10875458066F0B; };
@@ -88,7 +89,9 @@
 		DC66FE895752B8A89149A6A5 /* Cocoa.framework */ /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
 		E043DB3360F8E26FB7FACB36 /* IOKit.framework */ /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
 		E957223797F09AFF5C94AC6A /* include_juce_audio_processors_lv2_libs.cpp */ /* include_juce_audio_processors_lv2_libs.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = include_juce_audio_processors_lv2_libs.cpp; path = ../../JuceLibraryCode/include_juce_audio_processors_lv2_libs.cpp; sourceTree = SOURCE_ROOT; };
+		EACA58E5E546BF3DC45B1C72 /* MidiInputRouter.h */ /* MidiInputRouter.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = MidiInputRouter.h; path = ../../Source/MidiInputRouter.h; sourceTree = SOURCE_ROOT; };
 		ECA09215DB03684F8A9111EC /* DiscRecording.framework */ /* DiscRecording.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = DiscRecording.framework; path = System/Library/Frameworks/DiscRecording.framework; sourceTree = SDKROOT; };
+		F326C370C5B61F33623863DD /* MidiInputRouter.cpp */ /* MidiInputRouter.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = MidiInputRouter.cpp; path = ../../Source/MidiInputRouter.cpp; sourceTree = SOURCE_ROOT; };
 		F79C203CFB15F049C4AA1A28 /* include_juce_gui_basics.mm */ /* include_juce_gui_basics.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_gui_basics.mm; path = ../../JuceLibraryCode/include_juce_gui_basics.mm; sourceTree = SOURCE_ROOT; };
 		FF3D9D8550E67A8091EBB646 /* include_juce_audio_processors_ara.cpp */ /* include_juce_audio_processors_ara.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = include_juce_audio_processors_ara.cpp; path = ../../JuceLibraryCode/include_juce_audio_processors_ara.cpp; sourceTree = SOURCE_ROOT; };
 		FFE4950E34E0BE61FDC1E361 /* Foundation.framework */ /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
@@ -150,6 +153,8 @@
 				CD6AF9FEE9DCB90FD8E6855F,
 				CAB4D9E3CEC3AC36D7357CF6,
 				0B0BDC3CD71A0A15EC5FB681,
+				F326C370C5B61F33623863DD,
+				EACA58E5E546BF3DC45B1C72,
 			);
 			name = Source;
 			sourceTree = "<group>";
@@ -318,6 +323,7 @@
 			files = (
 				C5109F5052BC638A57A90CA2,
 				3DE149F540BAB57C7A2E8251,
+				2F1D82C17951661DD1F5C907,
 				5BCA0A0EF2317799F5DE6BE4,
 				4A1D789AE4F51BD8782CA5D7,
 				B5082CAE2ACB181D91CB4C1D,

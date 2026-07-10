@@ -522,4 +522,5 @@ dependencies: /Users/watchan/PianoRollMaestro/Source/Main.cpp \
   /Users/watchan/JUCE/modules/juce_audio_utils/players/juce_AudioProcessorPlayer.h \
   /Users/watchan/JUCE/modules/juce_audio_utils/audio_cd/juce_AudioCDBurner.h \
   /Users/watchan/JUCE/modules/juce_audio_utils/audio_cd/juce_AudioCDReader.h \
-  /Users/watchan/PianoRollMaestro/Source/MainEditorComponent.h
+  /Users/watchan/PianoRollMaestro/Source/MainEditorComponent.h \
+  /Users/watchan/PianoRollMaestro/Source/MidiInputRouter.h

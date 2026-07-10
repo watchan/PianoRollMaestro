@@ -11,6 +11,10 @@
             file="Source/MainEditorComponent.cpp"/>
       <FILE id="prm0003" name="MainEditorComponent.h" compile="0" resource="0"
             file="Source/MainEditorComponent.h"/>
+      <FILE id="prm0004" name="MidiInputRouter.cpp" compile="1" resource="0"
+            file="Source/MidiInputRouter.cpp"/>
+      <FILE id="prm0005" name="MidiInputRouter.h" compile="0" resource="0"
+            file="Source/MidiInputRouter.h"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>
