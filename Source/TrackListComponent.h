@@ -6,11 +6,12 @@
 class TrackListComponent : public juce::Component
 {
 public:
-    void setTracks(const std::vector<Track>& tracksIn, int currentIndex);
+    void setTracks(const std::vector<Track>& tracksIn, int currentIndex, const juce::StringArray& instrumentNamesIn);
 
     void paint(juce::Graphics& g) override;
 
 private:
     juce::StringArray trackNames;
+    juce::StringArray instrumentNames;
     int currentTrack = 0;
 };

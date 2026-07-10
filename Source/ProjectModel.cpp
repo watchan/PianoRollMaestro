@@ -83,6 +83,18 @@ juce::ValueTree Track::toValueTree() const
     tree.setProperty("name", name, nullptr);
     tree.setProperty("midiChannel", midiChannel, nullptr);
     tree.appendChild(clip.toValueTree(), nullptr);
+
+    if (instrumentDescription.name.isNotEmpty())
+    {
+        if (auto descriptionXml = instrumentDescription.createXml())
+        {
+            juce::ValueTree instrumentTree("Instrument");
+            instrumentTree.appendChild(juce::ValueTree::fromXml(*descriptionXml), nullptr);
+            instrumentTree.setProperty("state", instrumentState.toBase64Encoding(), nullptr);
+            tree.appendChild(instrumentTree, nullptr);
+        }
+    }
+
     return tree;
 }
 
@@ -94,6 +106,18 @@ void Track::loadFromValueTree(const juce::ValueTree& tree)
     auto clipTree = tree.getChildWithName("Clip");
     if (clipTree.isValid())
         clip.loadFromValueTree(clipTree);
+
+    instrumentDescription = juce::PluginDescription();
+    instrumentState.reset();
+
+    auto instrumentTree = tree.getChildWithName("Instrument");
+    if (instrumentTree.isValid() && instrumentTree.getNumChildren() > 0)
+    {
+        if (auto descriptionXml = instrumentTree.getChild(0).createXml())
+            instrumentDescription.loadFromXml(*descriptionXml);
+
+        instrumentState.fromBase64Encoding(instrumentTree.getProperty("state", "").toString());
+    }
 }
 
 juce::ValueTree Project::toValueTree() const

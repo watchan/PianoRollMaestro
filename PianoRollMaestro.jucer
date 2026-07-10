@@ -39,6 +39,18 @@
             file="Source/StepGridComponent.cpp"/>
       <FILE id="prm0017" name="StepGridComponent.h" compile="0" resource="0"
             file="Source/StepGridComponent.h"/>
+      <FILE id="prm0018" name="PluginHost.cpp" compile="1" resource="0"
+            file="Source/PluginHost.cpp"/>
+      <FILE id="prm0019" name="PluginHost.h" compile="0" resource="0"
+            file="Source/PluginHost.h"/>
+      <FILE id="prm0020" name="PluginEditorWindow.h" compile="0" resource="0"
+            file="Source/PluginEditorWindow.h"/>
+      <FILE id="prm0021" name="InstrumentPanelComponent.cpp" compile="1" resource="0"
+            file="Source/InstrumentPanelComponent.cpp"/>
+      <FILE id="prm0022" name="InstrumentPanelComponent.h" compile="0" resource="0"
+            file="Source/InstrumentPanelComponent.h"/>
+      <FILE id="prm0023" name="InstrumentPanelWindow.h" compile="0" resource="0"
+            file="Source/InstrumentPanelWindow.h"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>
@@ -54,7 +66,7 @@
     <MODULE id="juce_gui_basics" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
     <MODULE id="juce_gui_extra" showAllCode="1" useLocalCopy="0" useGlobalPath="1"/>
   </MODULES>
-  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1"/>
+  <JUCEOPTIONS JUCE_STRICT_REFCOUNTEDPOINTER="1" JUCE_PLUGINHOST_AU="1" JUCE_PLUGINHOST_VST3="1"/>
   <EXPORTFORMATS>
     <XCODE_MAC targetFolder="Builds/MacOSX">
       <CONFIGURATIONS>

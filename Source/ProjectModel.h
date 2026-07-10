@@ -39,6 +39,13 @@ public:
     int midiChannel = 1;
     MidiClip clip;
 
+    // Instrument assignment (Milestone 2). Data only -- the live
+    // juce::AudioPluginInstance lives in PlaybackEngine, not here.
+    // instrumentDescription.name.isEmpty() means "no plugin, use the
+    // built-in fallback synth."
+    juce::PluginDescription instrumentDescription;
+    juce::MemoryBlock instrumentState;
+
     juce::ValueTree toValueTree() const;
     void loadFromValueTree(const juce::ValueTree& tree);
 };

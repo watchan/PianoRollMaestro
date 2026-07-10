@@ -16,8 +16,15 @@ public:
     // (a chord, or a single note) has finished arriving. StepRecord mode only.
     std::function<void(const std::vector<StepNote>&)> onStepChordCaptured;
 
-    // Fired on the message thread for live preview. PlayMonitor mode only.
+    // Fired on the message thread for live audio preview -- always, in both
+    // StepRecord and PlayMonitor, so you can hear what you're playing while
+    // recording, not just while auditioning.
     std::function<void(int noteNumber, float velocity, bool isOn)> onLiveNote;
+
+    // Non-note messages (sustain pedal, other CCs, pitch bend, aftertouch)
+    // relevant to live preview -- e.g. a held sustain pedal should keep
+    // notes ringing on whatever's loaded. Also fires in both modes.
+    std::function<void(const juce::MidiMessage&)> onLiveControllerMessage;
 
     void setMode(MidiInputMode newMode) { mode = newMode; }
     MidiInputMode getMode() const { return mode; }

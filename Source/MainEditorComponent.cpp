@@ -16,6 +16,9 @@ MainEditorComponent::MainEditorComponent()
     addAndMakeVisible(playButton);
     playButton.onClick = [this] { togglePlayback(); grabKeyboardFocus(); };
 
+    addAndMakeVisible(instrumentButton);
+    instrumentButton.onClick = [this] { openInstrumentPanel(); };
+
     midiInputRouter.onStepChordCaptured = [this](const std::vector<StepNote>& notes)
     {
         stepChordCaptured(notes);
@@ -23,6 +26,10 @@ MainEditorComponent::MainEditorComponent()
     midiInputRouter.onLiveNote = [this](int noteNumber, float velocity, bool isOn)
     {
         liveNote(noteNumber, velocity, isOn);
+    };
+    midiInputRouter.onLiveControllerMessage = [this](const juce::MidiMessage& message)
+    {
+        playbackEngine.liveMidiMessage(cursorTrackIndex, message);
     };
 
     setWantsKeyboardFocus(true);
@@ -38,9 +45,9 @@ MainEditorComponent::~MainEditorComponent()
     shutdownAudio();
 }
 
-void MainEditorComponent::prepareToPlay(int, double sampleRate)
+void MainEditorComponent::prepareToPlay(int samplesPerBlockExpected, double sampleRate)
 {
-    playbackEngine.prepare(sampleRate);
+    playbackEngine.prepare(sampleRate, samplesPerBlockExpected);
 }
 
 void MainEditorComponent::getNextAudioBlock(const juce::AudioSourceChannelInfo& bufferToFill)
@@ -68,6 +75,47 @@ void MainEditorComponent::togglePlayback()
         playbackEngine.start();
 
     transportBar.setPlaying(playbackEngine.isPlaying());
+}
+
+void MainEditorComponent::openInstrumentPanel()
+{
+    auto trackIndex = cursorTrackIndex;
+    auto* currentInstrument = playbackEngine.getTrackInstrument(trackIndex);
+    auto currentName = currentInstrument != nullptr ? currentInstrument->getName() : juce::String();
+
+    instrumentPanelWindow = std::make_unique<InstrumentPanelWindow>(
+        pluginHost,
+        project.tracks[(size_t) trackIndex].name,
+        currentName,
+        [this, trackIndex](const juce::PluginDescription& description)
+        {
+            pluginHost.createInstrument(description, 44100.0, 512,
+                [this, trackIndex](std::unique_ptr<juce::AudioPluginInstance> instance, const juce::String& error)
+                {
+                    if (instance != nullptr)
+                    {
+                        playbackEngine.setTrackInstrument(trackIndex, std::move(instance));
+                        refreshChildViews();
+                    }
+                    else
+                    {
+                        DBG("Failed to load instrument for track " << trackIndex << ": " << error);
+                    }
+
+                    instrumentPanelWindow = nullptr;
+                });
+        },
+        [this, trackIndex]
+        {
+            if (auto* instrument = playbackEngine.getTrackInstrument(trackIndex))
+                pluginEditorWindow = std::make_unique<PluginEditorWindow>(*instrument, instrument->getName());
+        },
+        [this, trackIndex]
+        {
+            playbackEngine.setTrackInstrument(trackIndex, nullptr);
+            refreshChildViews();
+            instrumentPanelWindow = nullptr;
+        });
 }
 
 void MainEditorComponent::refreshMidiDeviceList()
@@ -116,9 +164,9 @@ void MainEditorComponent::liveNote(int noteNumber, float velocity, bool isOn)
     auto shiftedNote = juce::jlimit(0, 127, noteNumber + octaveShiftOctaves * 12);
 
     if (isOn)
-        playbackEngine.liveNoteOn(shiftedNote, velocity);
+        playbackEngine.liveNoteOn(cursorTrackIndex, shiftedNote, velocity);
     else
-        playbackEngine.liveNoteOff(shiftedNote);
+        playbackEngine.liveNoteOff(cursorTrackIndex, shiftedNote);
 }
 
 void MainEditorComponent::moveCursor(int deltaSteps)
@@ -131,6 +179,17 @@ void MainEditorComponent::switchTrack(int deltaTracks)
 {
     auto numTracks = (int) project.tracks.size();
     cursorTrackIndex = juce::jlimit(0, numTracks - 1, cursorTrackIndex + deltaTracks);
+    refreshChildViews();
+}
+
+void MainEditorComponent::addTrack()
+{
+    Track newTrack;
+    newTrack.name = "Track " + juce::String(project.tracks.size() + 1);
+    project.tracks.push_back(newTrack);
+
+    cursorTrackIndex = (int) project.tracks.size() - 1;
+    cursorStepIndex = 0;
     refreshChildViews();
 }
 
@@ -195,7 +254,14 @@ void MainEditorComponent::toggleInputMode()
 
 void MainEditorComponent::refreshChildViews()
 {
-    trackList.setTracks(project.tracks, cursorTrackIndex);
+    juce::StringArray instrumentNames;
+    for (int i = 0; i < (int) project.tracks.size(); ++i)
+    {
+        auto* instrument = playbackEngine.getTrackInstrument(i);
+        instrumentNames.add(instrument != nullptr ? instrument->getName() : juce::String());
+    }
+
+    trackList.setTracks(project.tracks, cursorTrackIndex, instrumentNames);
     stepGrid.setClip(&project.tracks[(size_t) cursorTrackIndex].clip, cursorStepIndex);
     transportBar.setPlaying(playbackEngine.isPlaying());
     transportBar.setBpm(project.tempoBpm);
@@ -207,15 +273,21 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
 {
     // Left-hand-only layout: the right hand stays on the MIDI keyboard the
     // whole time, so every command here lives on the QWERTY left side.
-    // d/f (step left/right) and 3/e (track prev/next, directly above d) let
-    // the hand stay put and just rock two fingers up/down/sideways.
-    // Cmd+S/O/N are the one sanctioned exception (file dialogs, infrequent).
+    // d/f (step left/right) let the hand stay put and just rock two fingers
+    // sideways. Track prev/next is Cmd+3/Cmd+E (directly above d), Cmd-
+    // modified to stay consistent with the same shortcut in the Instrument
+    // panel's search box (where plain 3/e can't be used -- they're needed
+    // for typing search text there).
     if (key.getModifiers().isCommandDown())
     {
         if (key.isKeyCode('S') && key.getModifiers().isShiftDown()) { saveProjectAs(); return true; }
         if (key.isKeyCode('S')) { saveProject(); return true; }
         if (key.isKeyCode('O') || key.isKeyCode('0')) { openProject(); return true; } // '0' aliased: easy to mis-press next to 'O'
         if (key.isKeyCode('N')) { newProject(); return true; }
+        if (key.isKeyCode('T')) { addTrack(); return true; }
+        if (key.isKeyCode('I')) { openInstrumentPanel(); return true; }
+        if (key.isKeyCode('3')) { switchTrack(-1); return true; }  // previous track (up)
+        if (key.isKeyCode('E')) { switchTrack(1); return true; }   // next track (down)
         return false;
     }
 
@@ -228,8 +300,6 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
     {
         case 'd': moveCursor(-1); return true;      // step left
         case 'f': moveCursor(1); return true;       // step right
-        case '3': switchTrack(-1); return true;     // previous track (up)
-        case 'e': switchTrack(1); return true;      // next track (down)
         case 'a': clearCurrentStep(); return true;  // clear, cursor stays
         case 'g': deleteAndRetreat(); return true;  // delete + retreat
         case 't': tieCurrentStep(); return true;
@@ -242,8 +312,60 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
     return false;
 }
 
+void MainEditorComponent::syncProjectInstrumentState()
+{
+    for (int i = 0; i < (int) project.tracks.size(); ++i)
+    {
+        auto* instrument = playbackEngine.getTrackInstrument(i);
+        auto& track = project.tracks[(size_t) i];
+
+        if (instrument != nullptr)
+        {
+            track.instrumentDescription = instrument->getPluginDescription();
+            instrument->getStateInformation(track.instrumentState);
+        }
+        else
+        {
+            track.instrumentDescription = juce::PluginDescription();
+            track.instrumentState.reset();
+        }
+    }
+}
+
+void MainEditorComponent::restoreInstrumentsFromProject()
+{
+    for (int i = 0; i < (int) project.tracks.size(); ++i)
+    {
+        auto& track = project.tracks[(size_t) i];
+        if (track.instrumentDescription.name.isEmpty())
+            continue;
+
+        auto description = track.instrumentDescription;
+        auto state = track.instrumentState;
+
+        pluginHost.createInstrument(description, 44100.0, 512,
+            [this, trackIndex = i, state](std::unique_ptr<juce::AudioPluginInstance> instance, const juce::String& error)
+            {
+                if (instance != nullptr)
+                {
+                    if (state.getSize() > 0)
+                        instance->setStateInformation(state.getData(), (int) state.getSize());
+
+                    playbackEngine.setTrackInstrument(trackIndex, std::move(instance));
+                    refreshChildViews();
+                }
+                else
+                {
+                    DBG("Failed to restore instrument for track " << trackIndex << ": " << error);
+                }
+            });
+    }
+}
+
 void MainEditorComponent::writeProjectToFile(const juce::File& file)
 {
+    syncProjectInstrumentState();
+
     if (auto xml = project.toValueTree().createXml())
         xml->writeTo(file);
 }
@@ -312,6 +434,7 @@ void MainEditorComponent::openProject()
                     cursorTrackIndex = 0;
                     cursorStepIndex = 0;
                     refreshChildViews();
+                    restoreInstrumentsFromProject();
                 }
             }
 
@@ -322,6 +445,7 @@ void MainEditorComponent::openProject()
 void MainEditorComponent::newProject()
 {
     playbackEngine.stop();
+    playbackEngine.setTrackInstrument(0, nullptr); // clear any leftover instrument from the previous project
 
     project = Project{};
     project.tracks.push_back(Track{});
@@ -344,8 +468,9 @@ void MainEditorComponent::resized()
     auto topRow = bounds.removeFromTop(30);
     midiDeviceBox.setBounds(topRow.removeFromLeft(300).reduced(4));
     playButton.setBounds(topRow.removeFromLeft(80).reduced(4));
+    instrumentButton.setBounds(topRow.removeFromLeft(100).reduced(4));
 
     transportBar.setBounds(bounds.removeFromTop(28));
-    trackList.setBounds(bounds.removeFromLeft(160));
+    trackList.setBounds(bounds.removeFromLeft(200));
     stepGrid.setBounds(bounds);
 }

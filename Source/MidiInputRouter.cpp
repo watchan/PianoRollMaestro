@@ -12,6 +12,10 @@ void MidiInputRouter::handleIncomingMidiMessage(juce::MidiInput*, const juce::Mi
 {
     // Called on the MIDI thread; hop to the message thread before touching
     // pendingNotes, mode, or the (message-thread-only) juce::Timer.
+    // Live audio preview (onLiveNote/onLiveControllerMessage) always fires,
+    // regardless of mode -- you should be able to hear what you're playing
+    // while step-recording, not just in PlayMonitor. StepRecord additionally
+    // captures note-ons into the pending chord for the current step.
     if (message.isNoteOn())
     {
         juce::MessageManager::callAsync([this,
@@ -23,18 +27,25 @@ void MidiInputRouter::handleIncomingMidiMessage(juce::MidiInput*, const juce::Mi
                 pendingNotes.push_back({ pitch, velocity });
                 startTimer(chordCaptureWindowMs);
             }
-            else if (onLiveNote)
-            {
+
+            if (onLiveNote)
                 onLiveNote(pitch, velocity, true);
-            }
         });
     }
     else if (message.isNoteOff())
     {
         juce::MessageManager::callAsync([this, pitch = message.getNoteNumber()]
         {
-            if (mode == MidiInputMode::PlayMonitor && onLiveNote)
+            if (onLiveNote)
                 onLiveNote(pitch, 0.0f, false);
+        });
+    }
+    else if (message.isController() || message.isPitchWheel() || message.isAftertouch() || message.isChannelPressure())
+    {
+        juce::MessageManager::callAsync([this, message]
+        {
+            if (onLiveControllerMessage)
+                onLiveControllerMessage(message);
         });
     }
 }
