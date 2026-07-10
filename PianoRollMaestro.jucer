@@ -15,6 +15,30 @@
             file="Source/MidiInputRouter.cpp"/>
       <FILE id="prm0005" name="MidiInputRouter.h" compile="0" resource="0"
             file="Source/MidiInputRouter.h"/>
+      <FILE id="prm0006" name="ProjectModel.cpp" compile="1" resource="0"
+            file="Source/ProjectModel.cpp"/>
+      <FILE id="prm0007" name="ProjectModel.h" compile="0" resource="0"
+            file="Source/ProjectModel.h"/>
+      <FILE id="prm0008" name="SimpleSineVoice.cpp" compile="1" resource="0"
+            file="Source/SimpleSineVoice.cpp"/>
+      <FILE id="prm0009" name="SimpleSineVoice.h" compile="0" resource="0"
+            file="Source/SimpleSineVoice.h"/>
+      <FILE id="prm0010" name="PlaybackEngine.cpp" compile="1" resource="0"
+            file="Source/PlaybackEngine.cpp"/>
+      <FILE id="prm0011" name="PlaybackEngine.h" compile="0" resource="0"
+            file="Source/PlaybackEngine.h"/>
+      <FILE id="prm0012" name="TransportBarComponent.cpp" compile="1" resource="0"
+            file="Source/TransportBarComponent.cpp"/>
+      <FILE id="prm0013" name="TransportBarComponent.h" compile="0" resource="0"
+            file="Source/TransportBarComponent.h"/>
+      <FILE id="prm0014" name="TrackListComponent.cpp" compile="1" resource="0"
+            file="Source/TrackListComponent.cpp"/>
+      <FILE id="prm0015" name="TrackListComponent.h" compile="0" resource="0"
+            file="Source/TrackListComponent.h"/>
+      <FILE id="prm0016" name="StepGridComponent.cpp" compile="1" resource="0"
+            file="Source/StepGridComponent.cpp"/>
+      <FILE id="prm0017" name="StepGridComponent.h" compile="0" resource="0"
+            file="Source/StepGridComponent.h"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>

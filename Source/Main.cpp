@@ -36,6 +36,9 @@ public:
             setResizable(true, false);
             centreWithSize(getWidth(), getHeight());
             setVisible(true);
+
+            if (auto* content = getContentComponent())
+                content->grabKeyboardFocus();
         }
 
         void closeButtonPressed() override

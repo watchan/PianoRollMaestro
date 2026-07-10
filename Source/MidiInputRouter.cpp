@@ -10,10 +10,41 @@ void MidiInputRouter::setActiveDevice(const juce::String& deviceIdentifier)
 
 void MidiInputRouter::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message)
 {
-    // Called on the MIDI thread. For this step, just log to console via a
-    // thread-safe hand-off to the message thread.
-    juce::MessageManager::callAsync([desc = message.getDescription()]
+    // Called on the MIDI thread; hop to the message thread before touching
+    // pendingNotes, mode, or the (message-thread-only) juce::Timer.
+    if (message.isNoteOn())
     {
-        DBG(desc);
-    });
+        juce::MessageManager::callAsync([this,
+                                          pitch = message.getNoteNumber(),
+                                          velocity = message.getFloatVelocity()]
+        {
+            if (mode == MidiInputMode::StepRecord)
+            {
+                pendingNotes.push_back({ pitch, velocity });
+                startTimer(chordCaptureWindowMs);
+            }
+            else if (onLiveNote)
+            {
+                onLiveNote(pitch, velocity, true);
+            }
+        });
+    }
+    else if (message.isNoteOff())
+    {
+        juce::MessageManager::callAsync([this, pitch = message.getNoteNumber()]
+        {
+            if (mode == MidiInputMode::PlayMonitor && onLiveNote)
+                onLiveNote(pitch, 0.0f, false);
+        });
+    }
+}
+
+void MidiInputRouter::timerCallback()
+{
+    stopTimer();
+
+    if (onStepChordCaptured && !pendingNotes.empty())
+        onStepChordCaptured(pendingNotes);
+
+    pendingNotes.clear();
 }
