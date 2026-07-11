@@ -21,7 +21,10 @@ struct Step
 class MidiClip
 {
 public:
-    int stepsPerQuarterNote = 4; // 4 = 16th notes
+    // 12 (not a plain power-of-2 like 4) so both 16th notes (3 steps) AND
+    // eighth-note triplets (4 steps -- a triplet doesn't divide evenly into
+    // a 4-per-quarter grid at all) are exact integer step counts.
+    int stepsPerQuarterNote = 12;
     std::vector<Step> steps;
 
     int totalLengthInSteps() const;

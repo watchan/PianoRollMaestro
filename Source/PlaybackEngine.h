@@ -20,6 +20,12 @@ public:
     void stop();
     bool isPlaying() const { return playing; }
 
+    // Current playback position, in samples from the start of the clip --
+    // read from the message thread by a UI Timer to draw a playhead locator.
+    // Not sample-accurate by the time it's read (blockStartSample updates on
+    // the audio thread), but plenty precise for a ~30Hz visual indicator.
+    int64_t getPlaybackPositionSamples() const { return blockStartSample; }
+
     // Direct preview path, bypassing the scheduled clip (PlayMonitor mode).
     // Active regardless of transport play/stop state. Targets one track's
     // instrument (normally whichever track the cursor is on).

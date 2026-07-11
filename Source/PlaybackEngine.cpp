@@ -83,14 +83,37 @@ void PlaybackEngine::start()
 void PlaybackEngine::stop()
 {
     playing = false;
+
+    // Discarding pendingEvents here can drop a note-off that was scheduled
+    // for later but whose matching note-on already fired -- that note is
+    // still actually sounding. juce::Synthesiser::allNotesOff() below
+    // reliably handles that for the fallback synth, but a hosted plugin's
+    // reset() is not guaranteed to silence currently-held voices (many
+    // plugins treat it as clearing internal buffers/tails, not "kill all
+    // notes"). Explicitly feeding an MIDI All-Notes-Off/All-Sound-Off
+    // through the plugin's normal processBlock() path is the standards-
+    // compliant way to make sure it actually stops, before reset() clears
+    // any remaining internal state.
     pendingEvents.clear();
 
     for (auto& statePtr : trackAudioStates)
     {
         auto& state = *statePtr;
         state.fallbackSynth.allNotesOff(1, true);
+
         if (state.plugin != nullptr)
+        {
+            juce::MidiBuffer allNotesOffMidi;
+            allNotesOffMidi.addEvent(juce::MidiMessage::allNotesOff(1), 0);
+            allNotesOffMidi.addEvent(juce::MidiMessage::allSoundOff(1), 1);
+
+            auto pluginChannels = juce::jmax(2, state.plugin->getTotalNumOutputChannels());
+            juce::AudioBuffer<float> scratch(pluginChannels, juce::jmax(1, blockSize));
+            scratch.clear();
+            state.plugin->processBlock(scratch, allNotesOffMidi);
+
             state.plugin->reset();
+        }
     }
 }
 
@@ -285,6 +308,11 @@ void PlaybackEngine::renderNextBlock(juce::AudioBuffer<float>& audioOut, juce::M
         pendingEvents.erase(pendingEvents.begin(), pendingEvents.begin() + (long) eventsConsumed);
     }
 
+    // Flat per-track attenuation before summing -- multiple tracks (or even
+    // one loud plugin) adding up unattenuated clips easily. Not a real
+    // per-track mixer (no user control yet, see backlog), just headroom.
+    constexpr float perTrackGain = 0.6f;
+
     for (size_t t = 0; t < trackAudioStates.size(); ++t)
     {
         auto& state = *trackAudioStates[t];
@@ -297,7 +325,7 @@ void PlaybackEngine::renderNextBlock(juce::AudioBuffer<float>& audioOut, juce::M
             state.plugin->processBlock(pluginScratch, perTrackMidi[t]);
 
             for (int ch = 0; ch < audioOut.getNumChannels(); ++ch)
-                audioOut.addFrom(ch, 0, pluginScratch, juce::jmin(ch, pluginScratch.getNumChannels() - 1), 0, numSamples);
+                audioOut.addFrom(ch, 0, pluginScratch, juce::jmin(ch, pluginScratch.getNumChannels() - 1), 0, numSamples, perTrackGain);
         }
         else
         {
@@ -307,8 +335,18 @@ void PlaybackEngine::renderNextBlock(juce::AudioBuffer<float>& audioOut, juce::M
             state.fallbackSynth.renderNextBlock(synthScratch, perTrackMidi[t], 0, numSamples);
 
             for (int ch = 0; ch < audioOut.getNumChannels(); ++ch)
-                audioOut.addFrom(ch, 0, synthScratch, juce::jmin(ch, synthScratch.getNumChannels() - 1), 0, numSamples);
+                audioOut.addFrom(ch, 0, synthScratch, juce::jmin(ch, synthScratch.getNumChannels() - 1), 0, numSamples, perTrackGain);
         }
+    }
+
+    // Master safety net: soft-clip (tanh) rather than hard digital clipping,
+    // in case several tracks still sum above 0dBFS despite the attenuation
+    // above -- smooths the overload instead of harsh crackling distortion.
+    for (int ch = 0; ch < audioOut.getNumChannels(); ++ch)
+    {
+        auto* data = audioOut.getWritePointer(ch);
+        for (int i = 0; i < numSamples; ++i)
+            data[i] = std::tanh(data[i]);
     }
 
     if (playing)

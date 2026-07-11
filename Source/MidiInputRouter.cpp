@@ -22,22 +22,14 @@ void MidiInputRouter::handleIncomingMidiMessage(juce::MidiInput*, const juce::Mi
                                           pitch = message.getNoteNumber(),
                                           velocity = message.getFloatVelocity()]
         {
-            if (mode == MidiInputMode::StepRecord)
-            {
-                pendingNotes.push_back({ pitch, velocity });
-                startTimer(chordCaptureWindowMs);
-            }
-
-            if (onLiveNote)
-                onLiveNote(pitch, velocity, true);
+            injectNote(pitch, velocity, true);
         });
     }
     else if (message.isNoteOff())
     {
         juce::MessageManager::callAsync([this, pitch = message.getNoteNumber()]
         {
-            if (onLiveNote)
-                onLiveNote(pitch, 0.0f, false);
+            injectNote(pitch, 0.0f, false);
         });
     }
     else if (message.isController() || message.isPitchWheel() || message.isAftertouch() || message.isChannelPressure())
@@ -47,6 +39,29 @@ void MidiInputRouter::handleIncomingMidiMessage(juce::MidiInput*, const juce::Mi
             if (onLiveControllerMessage)
                 onLiveControllerMessage(message);
         });
+    }
+}
+
+void MidiInputRouter::injectNote(int pitch, float velocity, bool isOn)
+{
+    // StepRecord additionally captures note-ons into the pending chord for
+    // the current step. Live audio preview (onLiveNote) always fires,
+    // regardless of mode -- you should be able to hear what you're playing
+    // while step-recording, not just in PlayMonitor.
+    if (isOn)
+    {
+        if (mode == MidiInputMode::StepRecord)
+        {
+            pendingNotes.push_back({ pitch, velocity });
+            startTimer(chordCaptureWindowMs);
+        }
+
+        if (onLiveNote)
+            onLiveNote(pitch, velocity, true);
+    }
+    else if (onLiveNote)
+    {
+        onLiveNote(pitch, 0.0f, false);
     }
 }
 

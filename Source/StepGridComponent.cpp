@@ -7,65 +7,208 @@ void StepGridComponent::setClip(const MidiClip* clipIn, int cursorStepIn)
     repaint();
 }
 
+void StepGridComponent::setPreviewNote(int pitchOrMinusOne)
+{
+    if (previewNote == pitchOrMinusOne)
+        return;
+
+    previewNote = pitchOrMinusOne;
+    repaint();
+}
+
+void StepGridComponent::setPlaybackStep(int stepIndexOrMinusOne)
+{
+    if (playbackStep == stepIndexOrMinusOne)
+        return;
+
+    playbackStep = stepIndexOrMinusOne;
+    repaint();
+}
+
+void StepGridComponent::scrollPitchView(int deltaSemitones)
+{
+    lowestVisiblePitch = juce::jlimit(0, 127 - visiblePitchRows + 1, lowestVisiblePitch + deltaSemitones);
+    repaint();
+}
+
+void StepGridComponent::centerPitchView(int pitch)
+{
+    auto newLowest = juce::jlimit(0, juce::jmax(0, 127 - visiblePitchRows + 1), pitch - visiblePitchRows / 2);
+    if (newLowest == lowestVisiblePitch)
+        return;
+
+    lowestVisiblePitch = newLowest;
+    repaint();
+}
+
+void StepGridComponent::zoomVertical(float factor)
+{
+    auto centrePitch = lowestVisiblePitch + visiblePitchRows / 2;
+    visiblePitchRows = juce::jlimit(4, 128, (int) std::round((float) visiblePitchRows * factor));
+    lowestVisiblePitch = juce::jlimit(0, juce::jmax(0, 127 - visiblePitchRows + 1), centrePitch - visiblePitchRows / 2);
+    repaint();
+}
+
+void StepGridComponent::zoomHorizontal(float factor)
+{
+    visibleStepsCount = juce::jlimit(8, 2000, (int) std::round((float) visibleStepsCount * factor));
+    repaint();
+}
+
+static juce::String noteName(int pitch)
+{
+    return juce::MidiMessage::getMidiNoteName(pitch, true, true, 3);
+}
+
 void StepGridComponent::paint(juce::Graphics& g)
 {
     g.fillAll(juce::Colours::black.brighter(0.02f));
 
-    auto numRows = highestPitch - lowestPitch + 1;
-    auto colWidth = (float) getWidth() / (float) visibleSteps;
+    auto numRows = visiblePitchRows;
+    auto highestVisiblePitch = lowestVisiblePitch + visiblePitchRows - 1;
+    auto gridWidth = (float) getWidth() - labelGutterWidth;
+    auto colWidth = gridWidth / (float) visibleStepsCount;
     auto rowHeight = (float) getHeight() / (float) numRows;
 
-    // Keep the cursor roughly centred in the visible window.
-    auto firstVisibleStep = juce::jmax(0, cursorStep - visibleSteps / 2);
+    // While playing, follow the playhead instead of the (possibly stationary)
+    // edit cursor, so playback stays on screen even if you haven't moved the
+    // edit cursor since pressing Tab.
+    auto followStep = playbackStep >= 0 ? playbackStep : cursorStep;
+    auto firstVisibleStep = juce::jmax(0, followStep - visibleStepsCount / 2);
 
-    // Grid lines every 4 steps (one beat, at the default 16th-note resolution).
-    g.setColour(juce::Colours::white.withAlpha(0.08f));
-    for (int col = 0; col <= visibleSteps; ++col)
+    // Pitch-name axis down the left edge.
+    g.setColour(juce::Colours::black);
+    g.fillRect(juce::Rectangle<float>(0.0f, 0.0f, labelGutterWidth, (float) getHeight()));
+    g.setFont(juce::FontOptions(juce::jmin(11.0f, rowHeight * 0.7f)));
+    for (int row = 0; row < numRows; ++row)
+    {
+        auto pitch = highestVisiblePitch - row;
+        auto y = (float) row * rowHeight;
+        // Sharps get a dimmer label so the C/D/E/... row names stand out.
+        g.setColour(juce::MidiMessage::isMidiNoteBlack(pitch) ? juce::Colours::grey : juce::Colours::lightgrey);
+        g.drawText(noteName(pitch), juce::Rectangle<float>(2.0f, y, labelGutterWidth - 4.0f, rowHeight),
+                    juce::Justification::centredLeft);
+    }
+
+    // Faint line at every step, brighter line every 12 steps (one beat, at
+    // the clip's 12-steps-per-quarter-note resolution -- see
+    // MidiClip::stepsPerQuarterNote) so the beat structure stays visible now
+    // that individual steps are finer (fine enough to represent eighth-note
+    // triplets) than a quarter of a beat.
+    for (int col = 0; col <= visibleStepsCount; ++col)
     {
         auto stepIndex = firstVisibleStep + col;
-        auto x = (float) col * colWidth;
+        auto x = labelGutterWidth + (float) col * colWidth;
+        auto isBeatLine = stepIndex % 12 == 0;
+        g.setColour(juce::Colours::white.withAlpha(isBeatLine ? 0.2f : 0.06f));
         g.drawVerticalLine((int) x, 0.0f, (float) getHeight());
-        juce::ignoreUnused(stepIndex);
     }
 
     // Cursor column highlight.
     {
         auto col = cursorStep - firstVisibleStep;
-        if (col >= 0 && col < visibleSteps)
+        if (col >= 0 && col < visibleStepsCount)
         {
             g.setColour(juce::Colours::dodgerblue.withAlpha(0.25f));
-            g.fillRect(juce::Rectangle<float>((float) col * colWidth, 0.0f, colWidth, (float) getHeight()));
+            g.fillRect(juce::Rectangle<float>(labelGutterWidth + (float) col * colWidth, 0.0f, colWidth, (float) getHeight()));
         }
+    }
+
+    // Preview row highlight: the WHOLE row lights up (not just the small
+    // locator box at the cursor column) so it's visible at a glance which
+    // pitch is about to be committed without having to spot a small box --
+    // requested after the box-only version was reported hard to see.
+    if (previewNote >= lowestVisiblePitch && previewNote <= highestVisiblePitch)
+    {
+        auto row = highestVisiblePitch - previewNote;
+        auto y = (float) row * rowHeight;
+        g.setColour(juce::Colours::yellow.withAlpha(0.18f));
+        g.fillRect(juce::Rectangle<float>(labelGutterWidth, y, gridWidth, rowHeight));
     }
 
     if (clip == nullptr)
         return;
 
-    for (int col = 0; col < visibleSteps; ++col)
+    // Draw each note as ONE block spanning its full duration -- including any
+    // tied continuation steps that follow -- rather than one same-colour
+    // block per step, so a tied note's actual length is visible at a glance
+    // instead of looking identical to several separate short notes in a row.
+    // Only a non-tied step with notes starts a new block; tiedFromPrevious
+    // steps just extend the block that started earlier and are skipped here
+    // (mirrors PlaybackEngine::scheduleUpTo's own duration calculation).
+    for (int stepIndex = 0; stepIndex < (int) clip->steps.size(); ++stepIndex)
     {
-        auto stepIndex = firstVisibleStep + col;
-        if (stepIndex < 0 || stepIndex >= (int) clip->steps.size())
-            continue;
-
         auto& step = clip->steps[(size_t) stepIndex];
-        if (step.notes.empty())
+        if (step.notes.empty() || step.tiedFromPrevious)
             continue;
 
-        auto x = (float) col * colWidth;
-        // Tied continuations draw with no left inset so they visually merge
-        // into the block that started the note.
-        auto inset = step.tiedFromPrevious ? 0.0f : 1.0f;
+        auto totalLengthInSteps = step.lengthInSteps;
+        auto lookahead = stepIndex + 1;
+        while (lookahead < (int) clip->steps.size() && clip->steps[(size_t) lookahead].tiedFromPrevious)
+        {
+            totalLengthInSteps += clip->steps[(size_t) lookahead].lengthInSteps;
+            ++lookahead;
+        }
+
+        auto blockStartCol = stepIndex - firstVisibleStep;
+        auto blockEndCol = blockStartCol + totalLengthInSteps; // exclusive
+        if (blockEndCol <= 0 || blockStartCol >= visibleStepsCount)
+            continue; // entirely off-screen
+
+        auto visibleStartCol = juce::jmax(0, blockStartCol);
+        auto visibleEndCol = juce::jmin(visibleStepsCount, blockEndCol);
+        auto x = labelGutterWidth + (float) visibleStartCol * colWidth;
+        auto width = (float) (visibleEndCol - visibleStartCol) * colWidth;
 
         for (auto& note : step.notes)
         {
-            if (note.pitch < lowestPitch || note.pitch > highestPitch)
+            if (note.pitch < lowestVisiblePitch || note.pitch > highestVisiblePitch)
                 continue;
 
-            auto row = highestPitch - note.pitch;
+            auto row = highestVisiblePitch - note.pitch;
             auto y = (float) row * rowHeight;
+            auto noteRect = juce::Rectangle<float>(x + 1.0f, y + 1.0f, width - 2.0f, rowHeight - 2.0f);
 
             g.setColour(juce::Colours::orange.withAlpha(0.85f));
-            g.fillRect(juce::Rectangle<float>(x + inset, y + 1.0f, colWidth - 1.0f, rowHeight - 2.0f));
+            g.fillRect(noteRect);
+
+            if (width >= 18.0f)
+            {
+                g.setColour(juce::Colours::black);
+                g.setFont(juce::FontOptions(juce::jmin(11.0f, rowHeight * 0.7f)));
+                g.drawText(noteName(note.pitch), noteRect.reduced(2.0f, 0.0f), juce::Justification::centredLeft);
+            }
+        }
+    }
+
+    // Preview locator: precise cursor-column box on top of the row highlight
+    // above, so both "roughly which pitch" (row) and "exactly where it lands"
+    // (column) are visible together.
+    if (previewNote >= lowestVisiblePitch && previewNote <= highestVisiblePitch)
+    {
+        auto col = cursorStep - firstVisibleStep;
+        if (col >= 0 && col < visibleStepsCount)
+        {
+            auto x = labelGutterWidth + (float) col * colWidth;
+            auto row = highestVisiblePitch - previewNote;
+            auto y = (float) row * rowHeight;
+
+            g.setColour(juce::Colours::yellow.withAlpha(0.9f));
+            g.drawRect(juce::Rectangle<float>(x + 1.0f, y + 1.0f, colWidth - 2.0f, rowHeight - 2.0f), 2.0f);
+        }
+    }
+
+    // Playhead: a bright vertical line at the currently-sounding step,
+    // distinct from the (blue, filled) edit-cursor column so both are
+    // visible at once (they're usually in different places during playback).
+    if (playbackStep >= 0)
+    {
+        auto col = playbackStep - firstVisibleStep;
+        if (col >= 0 && col < visibleStepsCount)
+        {
+            auto x = labelGutterWidth + (float) col * colWidth;
+            g.setColour(juce::Colours::white);
+            g.drawVerticalLine((int) x, 0.0f, (float) getHeight());
         }
     }
 }

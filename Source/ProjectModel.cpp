@@ -70,7 +70,7 @@ juce::ValueTree MidiClip::toValueTree() const
 
 void MidiClip::loadFromValueTree(const juce::ValueTree& tree)
 {
-    stepsPerQuarterNote = (int) tree.getProperty("stepsPerQuarterNote", 4);
+    stepsPerQuarterNote = (int) tree.getProperty("stepsPerQuarterNote", 12);
 
     steps.clear();
     for (int i = 0; i < tree.getNumChildren(); ++i)

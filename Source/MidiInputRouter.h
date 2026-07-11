@@ -33,6 +33,13 @@ public:
 
     void handleIncomingMidiMessage(juce::MidiInput* source, const juce::MidiMessage& message) override;
 
+    // Message-thread entry point shared by real MIDI keyboard input and any
+    // other note source (e.g. hum-to-MIDI pitch detection) that wants to
+    // participate in the same StepRecord chord-capture / live-preview logic
+    // without duplicating it. Callers on other threads must hop to the
+    // message thread themselves before calling this.
+    void injectNote(int pitch, float velocity, bool isOn);
+
 private:
     void timerCallback() override;
 
