@@ -6,7 +6,15 @@ Built with [JUCE](https://juce.com/) (8.0.3), as a Projucer `guiapp` project.
 
 ## Demo
 
-![Demo: humming a note in, committing it with Shift+F, tying with T, switching between 1/8 and 1/8-triplet input](docs/demo.gif)
+**Day 2** — Session View, chord estimate, measure numbers, MIDI controller input, and looping in the piano roll:
+
+![Demo Day 2: Session View, chord estimate, measure numbers, MIDI controller input, looping](docs/demo2.gif)
+
+Muted GIF above — [watch with sound on X](https://x.com/watchan/status/2076254041164967949).
+
+**Day 1** — humming a note in, committing it with `Shift+F`, tying with `T`, switching between 1/8 and 1/8-triplet input:
+
+![Demo Day 1: humming a note in, committing it with Shift+F, tying with T, switching between 1/8 and 1/8-triplet input](docs/demo.gif)
 
 Muted GIF above — [watch with sound on X](https://x.com/watchan/status/2075808532528795857).
 
