@@ -4,6 +4,10 @@ A from-scratch, standalone macOS DAW built around one rule: **zero mouse during 
 
 Built with [JUCE](https://juce.com/) (8.0.3), as a Projucer `guiapp` project.
 
+## Demo
+
+[🎥 Watch a demo on X](https://x.com/watchan/status/2075808532528795857) — humming a note in, committing it with `Shift+F`, tying with `T`, switching between 1/8 and 1/8-triplet input.
+
 ## Why
 
 Step input in mainstream DAWs (Logic, Cubase, Ableton) usually forces you to reach for the mouse constantly. This project scraps that entirely: a piano-roll editor where the cursor, track switching, note editing, and playback are all keyboard-driven, so your hands never have to leave home position.
