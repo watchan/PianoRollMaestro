@@ -82,7 +82,17 @@ juce::ValueTree Track::toValueTree() const
     juce::ValueTree tree("Track");
     tree.setProperty("name", name, nullptr);
     tree.setProperty("midiChannel", midiChannel, nullptr);
+    tree.setProperty("playingSlotIndex", playingSlotIndex, nullptr);
+    tree.setProperty("includeInChordEstimate", includeInChordEstimate, nullptr);
     tree.appendChild(clip.toValueTree(), nullptr);
+
+    // Session View slots, wrapped in their own container so an old file
+    // with only the single "Clip" child above still loads correctly (that
+    // child is the editing buffer, unrelated to this container).
+    juce::ValueTree sceneClipsTree("SceneClips");
+    for (auto& slotClip : sceneClips)
+        sceneClipsTree.appendChild(slotClip.toValueTree(), nullptr);
+    tree.appendChild(sceneClipsTree, nullptr);
 
     if (instrumentDescription.name.isNotEmpty())
     {
@@ -102,10 +112,24 @@ void Track::loadFromValueTree(const juce::ValueTree& tree)
 {
     name = tree.getProperty("name", "Track 1").toString();
     midiChannel = (int) tree.getProperty("midiChannel", 1);
+    playingSlotIndex = (int) tree.getProperty("playingSlotIndex", -1);
+    includeInChordEstimate = (bool) tree.getProperty("includeInChordEstimate", true);
 
     auto clipTree = tree.getChildWithName("Clip");
     if (clipTree.isValid())
         clip.loadFromValueTree(clipTree);
+
+    // Absent on an old file (pre-Session-View) -- sceneClips just stays
+    // empty, same as a freshly-constructed Track.
+    sceneClips.clear();
+    auto sceneClipsTree = tree.getChildWithName("SceneClips");
+    if (sceneClipsTree.isValid())
+        for (int i = 0; i < sceneClipsTree.getNumChildren(); ++i)
+        {
+            MidiClip slotClip;
+            slotClip.loadFromValueTree(sceneClipsTree.getChild(i));
+            sceneClips.push_back(slotClip);
+        }
 
     instrumentDescription = juce::PluginDescription();
     instrumentState.reset();
@@ -124,6 +148,9 @@ juce::ValueTree Project::toValueTree() const
 {
     juce::ValueTree tree("Project");
     tree.setProperty("tempoBpm", tempoBpm, nullptr);
+    tree.setProperty("loopStartStep", loopStartStep, nullptr);
+    tree.setProperty("loopEndStep", loopEndStep, nullptr);
+    tree.setProperty("loopEnabled", loopEnabled, nullptr);
 
     for (auto& track : tracks)
         tree.appendChild(track.toValueTree(), nullptr);
@@ -134,6 +161,9 @@ juce::ValueTree Project::toValueTree() const
 void Project::loadFromValueTree(const juce::ValueTree& tree)
 {
     tempoBpm = (double) tree.getProperty("tempoBpm", 120.0);
+    loopStartStep = (int) tree.getProperty("loopStartStep", 0);
+    loopEndStep = (int) tree.getProperty("loopEndStep", 0);
+    loopEnabled = (bool) tree.getProperty("loopEnabled", false);
 
     tracks.clear();
     for (int i = 0; i < tree.getNumChildren(); ++i)

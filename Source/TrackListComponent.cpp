@@ -3,8 +3,12 @@
 void TrackListComponent::setTracks(const std::vector<Track>& tracksIn, int currentIndex, const juce::StringArray& instrumentNamesIn)
 {
     trackNames.clear();
+    chordIncluded.clear();
     for (auto& t : tracksIn)
+    {
         trackNames.add(t.name);
+        chordIncluded.push_back(t.includeInChordEstimate);
+    }
 
     instrumentNames = instrumentNamesIn;
     currentTrack = currentIndex;
@@ -27,6 +31,27 @@ void TrackListComponent::paint(juce::Graphics& g)
         }
 
         auto nameBounds = rowBounds.removeFromTop(rowHeight / 2);
+
+        // "C" badge: whether this track feeds ChordEstimator (Cmd+A toggles
+        // it) -- bright/filled when included (the default), dim/outlined
+        // when excluded, same filled-vs-outlined convention TransportBar's
+        // HUM/LOOP badges use.
+        auto badgeBounds = nameBounds.removeFromRight(20).reduced(2);
+        auto included = i < (int) chordIncluded.size() ? chordIncluded[(size_t) i] : true;
+        if (included)
+        {
+            g.setColour(juce::Colours::mediumseagreen);
+            g.fillRoundedRectangle(badgeBounds.toFloat(), 3.0f);
+            g.setColour(juce::Colours::black);
+        }
+        else
+        {
+            g.setColour(juce::Colours::grey.withAlpha(0.5f));
+            g.drawRoundedRectangle(badgeBounds.toFloat().reduced(0.5f), 3.0f, 1.0f);
+        }
+        g.setFont(juce::FontOptions(10.0f, juce::Font::bold));
+        g.drawText("C", badgeBounds, juce::Justification::centred);
+
         g.setColour(juce::Colours::white);
         g.drawText(trackNames[i], nameBounds.reduced(8, 0), juce::Justification::centredLeft);
 

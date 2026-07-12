@@ -8,7 +8,10 @@ bool InstrumentPanelComponent::SearchEditor::keyPressed(const juce::KeyPress& ke
     // shortcut in the app, which is always Cmd, never Ctrl).
     if (key.getModifiers().isCommandDown() && key.isKeyCode('3')) { if (onMoveHighlight) onMoveHighlight(-1); return true; }
     if (key.getModifiers().isCommandDown() && key.isKeyCode('E')) { if (onMoveHighlight) onMoveHighlight(1); return true; }
-    if (key == juce::KeyPress::returnKey) { if (onEnterKey) onEnterKey(); return true; }
+    // Tab also confirms the highlighted instrument, same as Enter -- Tab is
+    // already this app's "confirm/advance" key elsewhere (e.g. play/stop),
+    // so accepting it here too avoids forcing a reach for Enter specifically.
+    if (key == juce::KeyPress::returnKey || key == juce::KeyPress::tabKey) { if (onEnterKey) onEnterKey(); return true; }
     // Cmd+W (macOS's standard "close window" shortcut) instead of Escape --
     // Escape is a hand-off-home-row reach; Cmd+W stays close and is also
     // the idiomatic Mac convention for this exact action.

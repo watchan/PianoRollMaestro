@@ -1,9 +1,114 @@
 #include "MainEditorComponent.h"
+#include "ChordEstimator.h"
 
 // Defined further below; forward-declared here so earlier methods (e.g.
 // moveCursorByNoteOrStep) can use them too.
 static int noteTotalLengthInSteps(const std::vector<Step>& steps, int ownerIndex);
 static int findOwningNoteStepIndex(const std::vector<Step>& steps, int stepIndex);
+
+namespace
+{
+    // Generic two-closure UndoableAction so each undo entry can just say
+    // "apply this state" / "apply that state" without a bespoke subclass
+    // per editing command.
+    class LambdaUndoableAction : public juce::UndoableAction
+    {
+    public:
+        LambdaUndoableAction(std::function<void()> redoIn, std::function<void()> undoIn)
+            : redoAction(std::move(redoIn)), undoAction(std::move(undoIn)) {}
+
+        bool perform() override { redoAction(); return true; }
+        bool undo() override { undoAction(); return true; }
+
+    private:
+        std::function<void()> redoAction, undoAction;
+    };
+}
+
+// RAII undo/redo scope for note-editing commands -- see the declaration in
+// MainEditorComponent.h for the full rationale. Nested class, so it has
+// access to MainEditorComponent's private members without a friend
+// declaration.
+class MainEditorComponent::StepEditGuard
+{
+public:
+    explicit StepEditGuard(MainEditorComponent& ownerIn)
+        : owner(ownerIn), trackIndex(ownerIn.cursorTrackIndex),
+          before(ownerIn.project.tracks[(size_t) trackIndex].clip.steps),
+          cursorBefore(ownerIn.cursorStepIndex)
+    {
+    }
+
+    ~StepEditGuard()
+    {
+        auto& stepsNow = owner.project.tracks[(size_t) trackIndex].clip.steps;
+        if (stepsNow == before)
+            return; // pure navigation, nothing to undo
+
+        auto after = stepsNow;
+        auto cursorAfter = owner.cursorStepIndex;
+        auto* ownerPtr = &owner;
+        auto trackIndexCopy = trackIndex;
+        auto beforeCopy = before;
+        auto cursorBeforeCopy = cursorBefore;
+
+        // Without this, UndoManager merges every perform() into whatever
+        // transaction is already open -- it only auto-starts a fresh one
+        // for the very first perform() call ever made (newTransaction
+        // defaults to true, but perform() clears it and never sets it back
+        // on its own). Left out, undo() would revert the ENTIRE session's
+        // edits in one shot instead of one note-edit command at a time.
+        owner.undoManager.beginNewTransaction();
+        owner.undoManager.perform(new LambdaUndoableAction(
+            [ownerPtr, trackIndexCopy, after, cursorAfter]
+            { ownerPtr->applyStepEdit(trackIndexCopy, after, cursorAfter); },
+            [ownerPtr, trackIndexCopy, beforeCopy, cursorBeforeCopy]
+            { ownerPtr->applyStepEdit(trackIndexCopy, beforeCopy, cursorBeforeCopy); }));
+    }
+
+private:
+    MainEditorComponent& owner;
+    int trackIndex;
+    std::vector<Step> before;
+    int cursorBefore;
+};
+
+void MainEditorComponent::applyStepEdit(int trackIndex, const std::vector<Step>& steps, int cursorStep)
+{
+    // Reassigning clip.steps while the audio thread might be concurrently
+    // iterating that exact vector (scheduleUpTo(), which only runs while
+    // playbackEngine.isPlaying()) is a genuine data race -- stop() first to
+    // avoid it, same reasoning as addTrack()/newProject()/openProject().
+    // But this runs on EVERY note commit (StepEditGuard pushes an undo
+    // entry -> undoManager.perform() -> here, for every actual edit), so
+    // calling stop() unconditionally also sent All-Notes-Off/All-Sound-Off
+    // to every track's synth on every single 'f' press -- including
+    // whatever's still physically held on the MIDI keyboard's live
+    // monitor, cutting it off mid-note. Skipped entirely while not
+    // playing: there's no concurrent audio-thread access to guard against
+    // then (the overwhelmingly common case -- editing with the transport
+    // stopped), so there's nothing to protect and no reason to kill the
+    // live monitor.
+    if (playbackEngine.isPlaying())
+        playbackEngine.stop();
+
+    project.tracks[(size_t) trackIndex].clip.steps = steps;
+    cursorTrackIndex = trackIndex;
+    cursorStepIndex = cursorStep;
+    refreshChildViews();
+}
+
+void MainEditorComponent::performUndo()
+{
+    if (undoManager.canUndo())
+        undoManager.undo();
+}
+
+void MainEditorComponent::performRedo()
+{
+    if (undoManager.canRedo())
+        undoManager.redo();
+}
 
 MainEditorComponent::MainEditorComponent()
 {
@@ -12,7 +117,10 @@ MainEditorComponent::MainEditorComponent()
 
     addAndMakeVisible(transportBar);
     addAndMakeVisible(trackList);
+    chordEstimateBar.attachToStepGrid(stepGrid);
+    addAndMakeVisible(chordEstimateBar);
     addAndMakeVisible(stepGrid);
+    addChildComponent(sessionGrid); // starts hidden -- resized()/toggleViewMode() control visibility
     addAndMakeVisible(shortcutHelpBar);
 
     addAndMakeVisible(midiDeviceBox);
@@ -30,13 +138,16 @@ MainEditorComponent::MainEditorComponent()
 
     addAndMakeVisible(micLevelMeter);
 
-    midiInputRouter.onStepChordCaptured = [this](const std::vector<StepNote>& notes)
-    {
-        stepChordCaptured(notes);
-    };
+    // Real MIDI keyboard input is "just a controller" that feeds the exact
+    // same pending-chord-to-commit pipeline hum input does -- it's purely a
+    // live monitor, never auto-writing to the step grid. Unlike hum
+    // (monophonic), it can hold a chord -- see handleMidiNoteChange().
+    // Committing is always the explicit action in handleForwardKey()
+    // (plain 'f'), for whichever source (hum or MIDI) was heard from most
+    // recently.
     midiInputRouter.onLiveNote = [this](int noteNumber, float velocity, bool isOn)
     {
-        liveNote(noteNumber, velocity, isOn);
+        handleMidiNoteChange(noteNumber, velocity, isOn);
     };
     midiInputRouter.onLiveControllerMessage = [this](const juce::MidiMessage& message)
     {
@@ -45,27 +156,11 @@ MainEditorComponent::MainEditorComponent()
 
     // 'v' toggles hum listening on/off (see toggleHumInput()). Deliberately
     // NOT routed through midiInputRouter.injectNote() -- humming is monitor-
-    // only (a continuously updating live tone, like PlayMonitor), it never
-    // auto-writes to the step grid. Shift+F (commitHumNote()) explicitly
-    // commits whatever's currently sounding -- or, if nothing's sounding
-    // right now, whatever was last heard (currentHumNote is deliberately NOT
-    // cleared when humming stops, only when a NEW pitch is detected or hum
-    // listening is toggled off in toggleHumInput()). Humming and pressing a
-    // key at the exact same instant is awkward, so committing works on a
-    // delay: hum a note, stop, then press Shift+F (possibly repeatedly) at
-    // your own pace.
+    // only (a continuously updating live tone), it never auto-writes to the
+    // step grid either, same as MIDI above.
     humInputListener.onNoteChange = [this](int noteNumber, float velocity, bool isOn)
     {
-        if (isOn)
-            currentHumNote = noteNumber;
-        liveNote(noteNumber, velocity, isOn);
-        // Update the HUM status text AND the step-grid preview outline right
-        // here, the instant the pitch is detected -- not just whenever
-        // refreshChildViews() happens to run for some unrelated reason (e.g.
-        // cursor movement). Otherwise the preview only reflects reality
-        // after some later action, defeating its purpose of showing what
-        // Shift+F would commit before you actually press it.
-        updateHumDisplays();
+        handleHumNoteChange(noteNumber, velocity, isOn);
     };
 
     setWantsKeyboardFocus(true);
@@ -199,29 +294,34 @@ void MainEditorComponent::timerCallback()
 {
     micLevelMeter.setLevel(humInputListener.getCurrentLevel());
 
+    // stepGrid's pan/zoom can change via calls that don't go through
+    // refreshChildViews() (zoomStepGridHorizontal() etc. call straight into
+    // stepGrid) -- repainting every tick keeps chordEstimateBar's bar labels
+    // aligned to stepGrid's current view without hooking every such call site.
+    chordEstimateBar.repaint();
+
     if (!playbackEngine.isPlaying())
     {
         stepGrid.setPlaybackStep(-1);
         return;
     }
 
-    auto& clip = project.tracks[(size_t) cursorTrackIndex].clip;
-    auto stepSeconds = clip.stepDurationSeconds(project.tempoBpm);
-    if (stepSeconds <= 0.0)
-        return;
-
-    auto positionSeconds = (double) playbackEngine.getPlaybackPositionSamples() / playbackSampleRate;
-    stepGrid.setPlaybackStep((int) (positionSeconds / stepSeconds));
+    // Per-track step position, NOT the global sample clock -- a launched
+    // Session View clip loops on its own track cursor independently of the
+    // transport's single global position (see getTrackPlaybackStep()'s
+    // comment), so deriving the playhead from the global sample count made
+    // it run straight past a looping clip's own boundary instead of
+    // wrapping with it.
+    stepGrid.setPlaybackStep(playbackEngine.getTrackPlaybackStep(cursorTrackIndex));
 }
 
 void MainEditorComponent::toggleHumInput()
 {
-    auto turningOn = !humInputListener.isActive();
-    humInputListener.setActive(turningOn);
-
-    if (!turningOn)
-        currentHumNote = -1; // leaving hum mode clears whatever was pending to commit
-
+    // Deliberately does NOT clear pendingChord when turning off --
+    // pendingChord is shared with MIDI keyboard input (both are just
+    // "controllers" feeding the same commit slot), so turning hum listening
+    // off shouldn't wipe out a chord that came from the MIDI keyboard instead.
+    humInputListener.setActive(!humInputListener.isActive());
     refreshChildViews();
 }
 
@@ -270,7 +370,20 @@ void MainEditorComponent::openInstrumentPanel()
                 {
                     if (instance != nullptr)
                     {
+                        // The old instance (if any) is about to be destroyed --
+                        // any editor window still pointing at it must go first.
+                        invalidatePluginEditorWindow(trackIndex);
                         playbackEngine.setTrackInstrument(trackIndex, std::move(instance));
+
+                        // Show the freshly loaded plugin's editor right away.
+                        if (auto* newInstrument = playbackEngine.getTrackInstrument(trackIndex))
+                        {
+                            pluginEditorWindowsByTrack[trackIndex] =
+                                std::make_unique<PluginEditorWindow>(*newInstrument, newInstrument->getName());
+                            pluginEditorDesiredVisible[trackIndex] = true;
+                            updatePluginEditorWindowVisibility(true);
+                        }
+
                         refreshChildViews();
                     }
                     else
@@ -284,10 +397,17 @@ void MainEditorComponent::openInstrumentPanel()
         [this, trackIndex]
         {
             if (auto* instrument = playbackEngine.getTrackInstrument(trackIndex))
-                pluginEditorWindow = std::make_unique<PluginEditorWindow>(*instrument, instrument->getName());
+            {
+                auto& window = pluginEditorWindowsByTrack[trackIndex];
+                if (window == nullptr)
+                    window = std::make_unique<PluginEditorWindow>(*instrument, instrument->getName());
+                pluginEditorDesiredVisible[trackIndex] = true;
+                updatePluginEditorWindowVisibility(true);
+            }
         },
         [this, trackIndex]
         {
+            invalidatePluginEditorWindow(trackIndex);
             playbackEngine.setTrackInstrument(trackIndex, nullptr);
             refreshChildViews();
             instrumentPanelWindow = nullptr;
@@ -297,6 +417,48 @@ void MainEditorComponent::openInstrumentPanel()
 void MainEditorComponent::openAudioMidiSettings()
 {
     audioMidiSettingsWindow = std::make_unique<AudioMidiSettingsWindow>(deviceManager, micDeviceManager);
+}
+
+void MainEditorComponent::togglePluginEditor()
+{
+    auto* instrument = playbackEngine.getTrackInstrument(cursorTrackIndex);
+    if (instrument == nullptr)
+        return; // no plugin loaded on the current track
+
+    auto& window = pluginEditorWindowsByTrack[cursorTrackIndex];
+    if (window == nullptr)
+        window = std::make_unique<PluginEditorWindow>(*instrument, instrument->getName());
+
+    pluginEditorDesiredVisible[cursorTrackIndex] = !pluginEditorDesiredVisible[cursorTrackIndex];
+    updatePluginEditorWindowVisibility(true);
+}
+
+void MainEditorComponent::updatePluginEditorWindowVisibility(bool allowStealFocus)
+{
+    for (auto& [trackIndex, window] : pluginEditorWindowsByTrack)
+    {
+        if (window == nullptr)
+            continue;
+
+        auto shouldShow = trackIndex == cursorTrackIndex && pluginEditorDesiredVisible[trackIndex];
+        window->setVisible(shouldShow);
+        if (shouldShow && allowStealFocus)
+            window->toFront(true);
+    }
+
+    // setVisible(true) on a previously-hidden native window can still make
+    // it key/frontmost at the OS level even without an explicit toFront()
+    // call -- reclaim keyboard focus for the main editor whenever this
+    // wasn't a deliberate "show the plugin" action, so track-switching
+    // never silently breaks every other keyboard shortcut.
+    if (!allowStealFocus)
+        grabKeyboardFocus();
+}
+
+void MainEditorComponent::invalidatePluginEditorWindow(int trackIndex)
+{
+    pluginEditorWindowsByTrack.erase(trackIndex);
+    pluginEditorDesiredVisible.erase(trackIndex);
 }
 
 void MainEditorComponent::refreshMidiDeviceList()
@@ -326,18 +488,75 @@ void MainEditorComponent::ensureStepExists(int trackIndex, int stepIndex)
         steps.push_back(Step{});
 }
 
-void MainEditorComponent::stepChordCaptured(const std::vector<StepNote>& notes)
+void MainEditorComponent::handleHumNoteChange(int noteNumber, float velocity, bool isOn)
 {
-    ensureStepExists(cursorTrackIndex, cursorStepIndex);
+    // Hum is inherently monophonic (one pitch at a time from the YIN
+    // detector), so a new pitch always REPLACES pendingChord entirely,
+    // unlike MIDI's held-notes chord tracking below.
+    if (isOn)
+    {
+        pendingChord = { { noteNumber, velocity } };
+        pendingChordSource = PendingChordSource::Hum;
+    }
 
-    Step step;
-    step.notes.reserve(notes.size());
-    for (auto& n : notes)
-        step.notes.push_back({ juce::jlimit(0, 127, n.pitch + octaveShiftOctaves * 12), n.velocity });
+    liveNote(noteNumber, velocity, isOn);
 
-    project.tracks[(size_t) cursorTrackIndex].clip.steps[(size_t) cursorStepIndex] = step;
+    // Update the status text AND the step-grid preview outlines right here,
+    // the instant a new pitch arrives -- not just whenever refreshChildViews()
+    // happens to run for some unrelated reason (e.g. cursor movement).
+    // Otherwise the preview only reflects reality after some later action,
+    // defeating its purpose of showing what 'f' would commit before you
+    // actually press it.
+    updatePendingNoteDisplays();
+}
 
-    moveCursor(1);
+void MainEditorComponent::handleMidiNoteChange(int noteNumber, float velocity, bool isOn)
+{
+    if (isOn)
+    {
+        // A press while nothing else is held starts capturing a brand-new
+        // chord; a press while other notes are already down adds to it.
+        // pendingChord is deliberately NOT touched on note-off (below) --
+        // real chords are essentially never released in perfect unison, so
+        // mirroring "currently held" live would erode the chord back down
+        // to whatever's still held as each finger lifts, one at a time,
+        // instead of keeping the full chord that was actually played.
+        if (heldMidiNotes.empty())
+            pendingChord.clear();
+        pendingChordSource = PendingChordSource::Midi;
+
+        // Retriggering an already-held pitch shouldn't duplicate it.
+        for (auto it = heldMidiNotes.begin(); it != heldMidiNotes.end(); ++it)
+        {
+            if (it->pitch == noteNumber)
+            {
+                heldMidiNotes.erase(it);
+                break;
+            }
+        }
+        heldMidiNotes.push_back({ noteNumber, velocity });
+
+        auto alreadyPending = false;
+        for (auto& n : pendingChord)
+            if (n.pitch == noteNumber) { alreadyPending = true; break; }
+        if (!alreadyPending)
+            pendingChord.push_back({ noteNumber, velocity });
+    }
+    else
+    {
+        for (auto it = heldMidiNotes.begin(); it != heldMidiNotes.end(); ++it)
+        {
+            if (it->pitch == noteNumber)
+            {
+                heldMidiNotes.erase(it);
+                break;
+            }
+        }
+        // pendingChord stays as-is -- see the note-on branch above.
+    }
+
+    liveNote(noteNumber, velocity, isOn);
+    updatePendingNoteDisplays();
 }
 
 void MainEditorComponent::liveNote(int noteNumber, float velocity, bool isOn)
@@ -434,10 +653,86 @@ void MainEditorComponent::moveCursorByNoteOrStep(int direction)
     moveCursor(direction * humDurationPresets[(size_t) humDurationPresetIndex]);
 }
 
+void MainEditorComponent::handleForwardKey()
+{
+    StepEditGuard undoGuard(*this);
+
+    // Ableton-Live-style step input: if there's a pending chord waiting to
+    // be placed (from hum OR the MIDI keyboard -- both just feed the same
+    // pendingChord slot) AND input mode ('v') is armed, 'f' places it
+    // instead of just navigating. Gated on 'v' so a stray note played on the
+    // MIDI keyboard while not actively recording can't get committed by a
+    // 'f' press that was only meant to move the cursor. Otherwise it's plain
+    // note-aware forward navigation -- see handleBackwardKey() for the same
+    // gating on delete.
+    if (!pendingChord.empty() && humInputListener.isActive())
+    {
+        commitPendingNote();
+        return;
+    }
+
+    moveCursorByNoteOrStep(1);
+}
+
+void MainEditorComponent::handleBackwardKey()
+{
+    StepEditGuard undoGuard(*this);
+
+    // 'd' is plain backward navigation by default. It only deletes instead
+    // when input mode ('v') is armed AND the cursor sits on an existing note
+    // that shares at least one pitch with the currently pending chord (last
+    // heard from hum/MIDI) -- i.e. you're holding/just played that exact
+    // pitch and pressing 'd' removes the matching pitch(es) here, like
+    // Ableton's toggle-off gesture. Only the matching pitch(es) come out of
+    // the chord; any other notes sharing that step are left sounding. With
+    // 'v' off, or a note with no pitch in common, 'd' just navigates past it
+    // -- see handleForwardKey() for the same gating on commit.
+    if (!pendingChord.empty() && humInputListener.isActive())
+    {
+        auto& steps = project.tracks[(size_t) cursorTrackIndex].clip.steps;
+        auto ownerIndex = findOwningNoteStepIndex(steps, cursorStepIndex);
+
+        if (ownerIndex >= 0)
+        {
+            auto& ownerNotes = steps[(size_t) ownerIndex].notes;
+
+            auto removedAny = false;
+            for (auto& pending : pendingChord)
+            {
+                auto shiftedPending = juce::jlimit(0, 127, pending.pitch + octaveShiftOctaves * 12);
+                for (auto it = ownerNotes.begin(); it != ownerNotes.end(); ++it)
+                {
+                    if (it->pitch == shiftedPending)
+                    {
+                        ownerNotes.erase(it);
+                        removedAny = true;
+                        break;
+                    }
+                }
+            }
+
+            if (removedAny)
+            {
+                // Nothing left in this note at all -- clean up its tied
+                // continuation steps too, same as a full delete used to.
+                if (ownerNotes.empty())
+                    deleteWholeNoteAt(ownerIndex);
+
+                cursorStepIndex = ownerIndex;
+                refreshChildViews();
+                return;
+            }
+        }
+    }
+
+    moveCursorByNoteOrStep(-1);
+}
+
 void MainEditorComponent::switchTrack(int deltaTracks)
 {
     auto numTracks = (int) project.tracks.size();
     cursorTrackIndex = juce::jlimit(0, numTracks - 1, cursorTrackIndex + deltaTracks);
+    updatePluginEditorWindowVisibility();
     refreshChildViews();
 }
 
@@ -461,15 +756,33 @@ void MainEditorComponent::addTrack()
     refreshChildViews();
 }
 
-void MainEditorComponent::insertRestAndAdvance()
+void MainEditorComponent::advanceByDuration()
 {
-    ensureStepExists(cursorTrackIndex, cursorStepIndex);
-    project.tracks[(size_t) cursorTrackIndex].clip.steps[(size_t) cursorStepIndex] = Step{};
-    moveCursor(1);
+    // Pure navigation -- doesn't touch step content at all, so whatever's
+    // already at the cursor (a note or a rest) is left exactly as it was.
+    // Advances by the current duration preset (Shift+Z/X), same amount
+    // commitPendingNote()/tieCurrentStep() use, so the locator lands at the
+    // next beat position consistently regardless of what's under it.
+    moveCursor(humDurationPresets[(size_t) humDurationPresetIndex]);
+}
+
+void MainEditorComponent::deleteWholeNoteAt(int ownerIndex)
+{
+    // Deleting any part of a note removes the WHOLE note (all its
+    // tied-continuation steps too), not just one step -- otherwise you'd
+    // leave a dangling partial tie behind.
+    auto length = noteTotalLengthInSteps(project.tracks[(size_t) cursorTrackIndex].clip.steps, ownerIndex);
+    for (int i = 0; i < length; ++i)
+    {
+        ensureStepExists(cursorTrackIndex, ownerIndex + i);
+        project.tracks[(size_t) cursorTrackIndex].clip.steps[(size_t) (ownerIndex + i)] = Step{};
+    }
 }
 
 void MainEditorComponent::deleteAndRetreat()
 {
+    StepEditGuard undoGuard(*this);
+
     auto target = juce::jmax(0, cursorStepIndex - 1); // same clamping moveCursor(-1) used to apply
 
     auto& steps = project.tracks[(size_t) cursorTrackIndex].clip.steps;
@@ -477,16 +790,8 @@ void MainEditorComponent::deleteAndRetreat()
 
     if (ownerIndex >= 0)
     {
-        // Deleting any part of a note removes the WHOLE note (all its
-        // tied-continuation steps too), not just the single step under the
-        // cursor -- otherwise you'd leave a dangling partial tie behind.
         // Cursor lands on the note's own start, not just one step back.
-        auto length = noteTotalLengthInSteps(steps, ownerIndex);
-        for (int i = 0; i < length; ++i)
-        {
-            ensureStepExists(cursorTrackIndex, ownerIndex + i);
-            project.tracks[(size_t) cursorTrackIndex].clip.steps[(size_t) (ownerIndex + i)] = Step{};
-        }
+        deleteWholeNoteAt(ownerIndex);
         cursorStepIndex = ownerIndex;
     }
     else
@@ -501,8 +806,38 @@ void MainEditorComponent::deleteAndRetreat()
 
 void MainEditorComponent::clearCurrentStep()
 {
-    ensureStepExists(cursorTrackIndex, cursorStepIndex);
-    project.tracks[(size_t) cursorTrackIndex].clip.steps[(size_t) cursorStepIndex] = Step{};
+    StepEditGuard undoGuard(*this);
+
+    auto& steps = project.tracks[(size_t) cursorTrackIndex].clip.steps;
+    auto ownerIndex = findOwningNoteStepIndex(steps, cursorStepIndex);
+
+    if (ownerIndex >= 0)
+    {
+        // Clear the WHOLE note (root + every tied continuation step), not
+        // just whichever single step the cursor happens to be on. Clearing
+        // only the root left its tied continuations behind as orphans --
+        // tiedFromPrevious=true, no notes of their own, no longer owned by
+        // any note-start -- invisible everywhere that skips tied/empty
+        // steps (the grid, ChordEstimator) but never removed either, since
+        // trimTrailingEmptySteps() deliberately leaves tiedFromPrevious
+        // steps alone (correct for a real note's sustain, wrong once its
+        // root is gone). That's the "ゴミ" -- garbage nothing cleaned up.
+        deleteWholeNoteAt(ownerIndex);
+    }
+    else if (cursorStepIndex < (int) steps.size())
+    {
+        steps[(size_t) cursorStepIndex] = Step{};
+    }
+    // else: cursorStepIndex is already past the end of the array -- already
+    // an implicit rest, nothing to clear, no need to pad the vector for it.
+
+    // Also discards whatever's currently pending (hum or MIDI) -- otherwise
+    // there was no way to cancel a stray/misdetected pitch short of
+    // humming/playing a new (correct) one to overwrite it, or committing
+    // the wrong one with 'f'.
+    pendingChord.clear();
+    pendingChordSource = PendingChordSource::None;
+
     refreshChildViews();
 }
 
@@ -553,13 +888,29 @@ void MainEditorComponent::auditionNoteAtCursor()
 
     auto& step = steps[(size_t) ownerIndex];
 
-    // Brief noteOn/noteOff, not a sustained hold.
+    // Brief noteOn/noteOff, not a sustained hold -- except for a pitch
+    // that's already sounding because the MIDI keyboard is still
+    // physically holding it down (e.g. you committed the note with 'f'
+    // while still holding it). Auditioning that pitch too would schedule a
+    // delayed noteOff that fires well before the key is actually released,
+    // cutting the real hold short. The physical hold always wins: skip
+    // both the noteOn (redundant, it's already sounding) and the noteOff
+    // for any pitch currently in activeLiveNotes for this track.
     std::vector<int> pitches;
     for (auto& note : step.notes)
     {
+        auto alreadyHeld = false;
+        for (auto& [rawPitch, active] : activeLiveNotes)
+            if (active.trackIndex == cursorTrackIndex && active.shiftedPitch == note.pitch) { alreadyHeld = true; break; }
+        if (alreadyHeld)
+            continue;
+
         pitches.push_back(note.pitch);
         playbackEngine.liveNoteOn(cursorTrackIndex, note.pitch, note.velocity);
     }
+
+    if (pitches.empty())
+        return; // every pitch here is already sounding from a held key
 
     juce::Timer::callAfterDelay(150, [this, trackIndex = cursorTrackIndex, pitches]
     {
@@ -570,6 +921,8 @@ void MainEditorComponent::auditionNoteAtCursor()
 
 void MainEditorComponent::adjustNotePitch(int deltaSemitones)
 {
+    StepEditGuard undoGuard(*this);
+
     auto& steps = project.tracks[(size_t) cursorTrackIndex].clip.steps;
     auto ownerIndex = findOwningNoteStepIndex(steps, cursorStepIndex);
     if (ownerIndex < 0)
@@ -585,6 +938,8 @@ void MainEditorComponent::adjustNotePitch(int deltaSemitones)
 
 void MainEditorComponent::tieCurrentStep()
 {
+    StepEditGuard undoGuard(*this);
+
     auto& steps = project.tracks[(size_t) cursorTrackIndex].clip.steps;
 
     // Find the note to extend: either the one the cursor is currently ON
@@ -600,11 +955,11 @@ void MainEditorComponent::tieCurrentStep()
         return; // nothing sounding to extend
 
     // Extend by a fixed amount -- the currently-selected duration preset
-    // (Shift+Z/X), same as commitHumNote() uses -- NOT the note's own
+    // (Shift+Z/X), same as commitPendingNote() uses -- NOT the note's own
     // current total length, which would double on every repeated tie press
     // (extend by X, now length is 2X, next tie extends by 2X making it 4X,
     // and so on). Written as a genuine contiguous chain of 1-step tied
-    // continuations, same reasoning as commitHumNote(): a single step with
+    // continuations, same reasoning as commitPendingNote(): a single step with
     // lengthInSteps > 1 leaves intermediate grid slots untouched and
     // unmarked, which silently breaks the chain-walk both playback and
     // rendering rely on.
@@ -630,24 +985,139 @@ void MainEditorComponent::shiftOctave(int deltaOctaves)
     refreshChildViews();
 }
 
+void MainEditorComponent::adjustTempo(double deltaBpm)
+{
+    project.tempoBpm = juce::jlimit(20.0, 300.0, project.tempoBpm + deltaBpm);
+    refreshChildViews();
+}
+
+void MainEditorComponent::toggleLoopEnabled()
+{
+    project.loopEnabled = !project.loopEnabled;
+    refreshChildViews();
+}
+
+void MainEditorComponent::setLoopStartHere()
+{
+    project.loopStartStep = cursorStepIndex;
+    refreshChildViews();
+}
+
+void MainEditorComponent::setLoopEndHere()
+{
+    project.loopEndStep = cursorStepIndex;
+    refreshChildViews();
+}
+
+void MainEditorComponent::toggleViewMode()
+{
+    if (currentViewMode == ViewMode::PianoRoll)
+    {
+        currentViewMode = ViewMode::Session;
+        resized(); // swap which central component (stepGrid vs. sessionGrid) is laid out/visible
+        refreshChildViews();
+        return;
+    }
+
+    // Session -> Piano Roll: always go in through a specific, linked slot
+    // (creating a fresh one at the cursor if it's empty) rather than just
+    // revealing whatever the editing buffer happens to hold -- same as
+    // pressing 't' on the slot at the cursor, so 's' and 't' agree on what
+    // "enter the piano roll" means.
+    loadSlotAtCursorToEditor();
+}
+
+void MainEditorComponent::moveSessionCursor(int deltaSlots)
+{
+    sessionCursorSlotIndex = juce::jmax(0, sessionCursorSlotIndex + deltaSlots);
+    refreshChildViews();
+}
+
+void MainEditorComponent::launchSlotAtCursor()
+{
+    auto& track = project.tracks[(size_t) cursorTrackIndex];
+    if (sessionCursorSlotIndex < 0 || sessionCursorSlotIndex >= (int) track.sceneClips.size())
+        return; // nothing captured in this slot yet -- nothing to launch
+
+    track.playingSlotIndex = sessionCursorSlotIndex;
+    playbackEngine.retriggerTrack(cursorTrackIndex);
+    refreshChildViews();
+}
+
+void MainEditorComponent::stopCurrentTrackSlot()
+{
+    auto& track = project.tracks[(size_t) cursorTrackIndex];
+    track.playingSlotIndex = -2;
+    playbackEngine.retriggerTrack(cursorTrackIndex);
+    refreshChildViews();
+}
+
+void MainEditorComponent::captureClipToSlotAtCursor()
+{
+    auto& track = project.tracks[(size_t) cursorTrackIndex];
+    while ((int) track.sceneClips.size() <= sessionCursorSlotIndex)
+        track.sceneClips.push_back(MidiClip{});
+
+    track.sceneClips[(size_t) sessionCursorSlotIndex] = track.clip;
+    // Link: from here on, further edits to `clip` auto-sync back to this
+    // slot (see refreshChildViews()) instead of needing 'g' again.
+    track.editingSlotIndex = sessionCursorSlotIndex;
+    refreshChildViews();
+}
+
+void MainEditorComponent::loadSlotAtCursorToEditor()
+{
+    auto& track = project.tracks[(size_t) cursorTrackIndex];
+    if (sessionCursorSlotIndex < 0)
+        return; // shouldn't happen -- moveSessionCursor() clamps to >= 0
+
+    // No clip at this slot yet -- create a fresh, empty one so there's
+    // always something to open and start writing into (matching how
+    // captureClipToSlotAtCursor() already grows sceneClips to fit),
+    // instead of silently doing nothing on an empty slot.
+    while ((int) track.sceneClips.size() <= sessionCursorSlotIndex)
+        track.sceneClips.push_back(MidiClip{});
+
+    track.clip = track.sceneClips[(size_t) sessionCursorSlotIndex];
+    track.editingSlotIndex = sessionCursorSlotIndex; // live-link, same as captureClipToSlotAtCursor()
+    cursorStepIndex = 0;
+    currentViewMode = ViewMode::PianoRoll;
+    resized();
+    refreshChildViews();
+}
+
+void MainEditorComponent::toggleChordEstimateForCurrentTrack()
+{
+    auto& track = project.tracks[(size_t) cursorTrackIndex];
+    track.includeInChordEstimate = !track.includeInChordEstimate;
+    refreshChildViews();
+}
+
+void MainEditorComponent::nudgeHumPitch(int deltaSemitones)
+{
+    humSemitoneNudge = juce::jlimit(-24, 24, humSemitoneNudge + deltaSemitones);
+    refreshChildViews(); // re-applies the new nudge to the live preview immediately
+}
+
+int MainEditorComponent::shiftedPendingPitch(int rawPitch) const
+{
+    auto semitones = octaveShiftOctaves * 12 + (pendingChordSource == PendingChordSource::Hum ? humSemitoneNudge : 0);
+    return juce::jlimit(0, 127, rawPitch + semitones);
+}
+
 void MainEditorComponent::scrollStepGridPitch(int deltaSemitones)
 {
     stepGrid.scrollPitchView(deltaSemitones);
 }
 
-void MainEditorComponent::zoomStepGrid(float factor)
+void MainEditorComponent::zoomStepGridHorizontal(float factor)
 {
-    stepGrid.zoomVertical(factor);
     stepGrid.zoomHorizontal(factor);
 }
 
-void MainEditorComponent::toggleInputMode()
+void MainEditorComponent::zoomStepGridVertical(float factor)
 {
-    auto newMode = midiInputRouter.getMode() == MidiInputMode::StepRecord
-                       ? MidiInputMode::PlayMonitor
-                       : MidiInputMode::StepRecord;
-    midiInputRouter.setMode(newMode);
-    refreshChildViews();
+    stepGrid.zoomVertical(factor);
 }
 
 void MainEditorComponent::cycleHumDuration(int delta)
@@ -657,25 +1127,42 @@ void MainEditorComponent::cycleHumDuration(int delta)
     refreshChildViews();
 }
 
-void MainEditorComponent::commitHumNote()
+void MainEditorComponent::commitPendingNote()
 {
-    if (currentHumNote < 0)
-        return; // nothing currently sounding from the hum monitor
+    if (pendingChord.empty())
+        return; // nothing pending to commit
 
     auto durationSteps = humDurationPresets[(size_t) humDurationPresetIndex];
-    auto shiftedNote = juce::jlimit(0, 127, currentHumNote + octaveShiftOctaves * 12);
+    auto& steps = project.tracks[(size_t) cursorTrackIndex].clip.steps;
+    auto ownerIndex = findOwningNoteStepIndex(steps, cursorStepIndex);
 
-    // Written as a genuine contiguous chain (one note-start step + N-1
-    // explicit tiedFromPrevious continuation steps), never as a single Step
-    // with lengthInSteps > 1 -- a single long step left the intermediate
-    // grid slots untouched, and if a later action (e.g. tieCurrentStep)
-    // wrote a NEW tied step past that gap, the gap itself wasn't marked
-    // tiedFromPrevious, which silently broke the contiguous-chain walk both
-    // PlaybackEngine::scheduleUpTo and StepGridComponent's rendering rely
-    // on -- the note played/drew as if it were only 1 step long.
+    if (ownerIndex >= 0)
+    {
+        // A note already occupies this position (whole or via a tied
+        // continuation) -- merge the pending note(s) into it as a chord
+        // instead of overwriting/deleting what was already there.
+        auto& ownerNotes = steps[(size_t) ownerIndex].notes;
+        for (auto& n : pendingChord)
+            ownerNotes.push_back({ shiftedPendingPitch(n.pitch), n.velocity });
+
+        moveCursor(durationSteps);
+        return;
+    }
+
+    // Nothing here yet -- write a fresh note. Written as a genuine
+    // contiguous chain (one note-start step + N-1 explicit tiedFromPrevious
+    // continuation steps), never as a single Step with lengthInSteps > 1 --
+    // a single long step left the intermediate grid slots untouched, and if
+    // a later action (e.g. tieCurrentStep) wrote a NEW tied step past that
+    // gap, the gap itself wasn't marked tiedFromPrevious, which silently
+    // broke the contiguous-chain walk both PlaybackEngine::scheduleUpTo and
+    // StepGridComponent's rendering rely on -- the note played/drew as if it
+    // were only 1 step long.
     ensureStepExists(cursorTrackIndex, cursorStepIndex);
     Step noteStep;
-    noteStep.notes.push_back({ shiftedNote, 0.8f });
+    noteStep.notes.reserve(pendingChord.size());
+    for (auto& n : pendingChord)
+        noteStep.notes.push_back({ shiftedPendingPitch(n.pitch), n.velocity });
     project.tracks[(size_t) cursorTrackIndex].clip.steps[(size_t) cursorStepIndex] = noteStep;
 
     for (int i = 1; i < durationSteps; ++i)
@@ -691,6 +1178,17 @@ void MainEditorComponent::commitHumNote()
 
 void MainEditorComponent::refreshChildViews()
 {
+    trimTrailingEmptySteps();
+
+    // Session View: if the current track's piano-roll editing buffer is
+    // live-linked to a clip slot (see editingSlotIndex's declaration),
+    // keep that slot's stored copy in sync with every edit -- lets a
+    // captured/loaded clip be edited directly in the piano roll instead of
+    // needing an explicit "capture" (g) after every change.
+    auto& currentTrack = project.tracks[(size_t) cursorTrackIndex];
+    if (currentTrack.editingSlotIndex >= 0 && currentTrack.editingSlotIndex < (int) currentTrack.sceneClips.size())
+        currentTrack.sceneClips[(size_t) currentTrack.editingSlotIndex] = currentTrack.clip;
+
     juce::StringArray instrumentNames;
     for (int i = 0; i < (int) project.tracks.size(); ++i)
     {
@@ -700,53 +1198,95 @@ void MainEditorComponent::refreshChildViews()
 
     trackList.setTracks(project.tracks, cursorTrackIndex, instrumentNames);
     stepGrid.setClip(&project.tracks[(size_t) cursorTrackIndex].clip, cursorStepIndex);
+    stepGrid.setLoopRegion(project.loopStartStep, project.loopEndStep, project.loopEnabled);
 
     transportBar.setPlaying(playbackEngine.isPlaying());
     transportBar.setBpm(project.tempoBpm);
-    transportBar.setMode(midiInputRouter.getMode());
     transportBar.setOctaveShift(octaveShiftOctaves);
+    transportBar.setHumInputActive(humInputListener.isActive());
+    transportBar.setLoopEnabled(project.loopEnabled);
 
-    updateHumDisplays();
+    updatePendingNoteDisplays();
+    updateStepGridScale();
+    updateChordEstimates();
+
+    if (currentViewMode == ViewMode::Session)
+        sessionGrid.setTracks(project.tracks, cursorTrackIndex, sessionCursorSlotIndex);
 }
 
-void MainEditorComponent::updateHumDisplays()
+void MainEditorComponent::trimTrailingEmptySteps()
 {
-    // Preview shows the note as it will actually be written -- i.e. after
-    // the same octave shift commitHumNote() applies -- not the raw detected
-    // pitch, so the preview position matches where it'll really land.
-    if (currentHumNote >= 0)
+    for (auto& track : project.tracks)
     {
-        auto shiftedNote = juce::jlimit(0, 127, currentHumNote + octaveShiftOctaves * 12);
-        stepGrid.setPreviewNote(shiftedNote);
-        stepGrid.centerPitchView(shiftedNote); // auto-scroll so the hum pitch stays on screen
+        auto& steps = track.clip.steps;
+        while (!steps.empty() && steps.back().notes.empty() && !steps.back().tiedFromPrevious)
+            steps.pop_back();
     }
-    else
+}
+
+void MainEditorComponent::updateChordEstimates()
+{
+    auto stepsPerQuarterNote = project.tracks.empty() ? 12 : project.tracks[0].clip.stepsPerQuarterNote;
+    auto halfBeatLengthInSteps = juce::jmax(1, stepsPerQuarterNote / 2); // 0.5-beat analysis granularity
+    chordEstimateBar.setChords(ChordEstimator::estimate(project, halfBeatLengthInSteps));
+}
+
+void MainEditorComponent::updatePendingNoteDisplays()
+{
+    // Preview shows the note(s) as they will actually be written -- i.e.
+    // after the same octave shift commitPendingNote() applies -- not the
+    // raw detected pitches, so the preview position matches where they'll
+    // really land.
+    std::vector<int> shiftedPitches;
+    for (auto& n : pendingChord)
+        shiftedPitches.push_back(shiftedPendingPitch(n.pitch));
+
+    stepGrid.setPreviewNotes(shiftedPitches);
+    if (!shiftedPitches.empty())
+        stepGrid.centerPitchView(shiftedPitches.front()); // auto-scroll so the pending pitch stays on screen
+
+    transportBar.setPendingNoteStatus(shiftedPitches, humDurationPresets[(size_t) humDurationPresetIndex]);
+}
+
+void MainEditorComponent::updateStepGridScale()
+{
+    std::array<bool, 12> inScale {};
+    inScale.fill(currentScaleType == ScaleType::Off); // Off = every row treated as "in scale" (no tint difference)
+
+    if (currentScaleType != ScaleType::Off)
     {
-        stepGrid.setPreviewNote(-1);
+        static constexpr int majorIntervals[] = { 0, 2, 4, 5, 7, 9, 11 };
+        static constexpr int naturalMinorIntervals[] = { 0, 2, 3, 5, 7, 8, 10 };
+
+        auto* intervals = currentScaleType == ScaleType::Major ? majorIntervals : naturalMinorIntervals;
+        for (int i = 0; i < 7; ++i)
+            inScale[(size_t) ((scaleRootPitchClass + intervals[i]) % 12)] = true;
     }
 
-    transportBar.setHumStatus(humInputListener.isActive(), currentHumNote, humDurationPresets[(size_t) humDurationPresetIndex]);
+    stepGrid.setScale(inScale);
+}
+
+void MainEditorComponent::cycleScale()
+{
+    currentScaleType = currentScaleType == ScaleType::Major   ? ScaleType::NaturalMinor
+                      : currentScaleType == ScaleType::NaturalMinor ? ScaleType::Off
+                                                                     : ScaleType::Major;
+    updateStepGridScale();
 }
 
 bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
 {
-    DBG("keyPressed: textChar='" << (char) key.getTextCharacter() << "' keyCode=" << key.getKeyCode()
-        << " shift=" << (int) key.getModifiers().isShiftDown()
-        << " cmd=" << (int) key.getModifiers().isCommandDown()
-        << " isKeyCode3=" << (int) key.isKeyCode('3')
-        << " isKeyCodeE=" << (int) key.isKeyCode('E'));
-
     // Left-hand-only layout: the right hand stays on the MIDI keyboard the
     // whole time, so every command here lives on the QWERTY left side.
     // d/f (step left/right) let the hand stay put and just rock two fingers
-    // sideways. Track prev/next is Cmd+3/Cmd+E (directly above d), Cmd-
-    // modified to stay consistent with the same shortcut in the Instrument
-    // panel's search box (where plain 3/e can't be used -- they're needed
-    // for typing search text there). Plain (unmodified) 3/e are free
-    // elsewhere in the main editor, so they're reused there for pitch nudge
-    // on the note at the cursor: 3 = up a semitone, e = down (opposite of
-    // Cmd+3/Cmd+E's track direction -- picked by ear, not for consistency
-    // with the Cmd-modified pair).
+    // sideways -- see handleForwardKey()/handleBackwardKey() for their full
+    // Ableton-Live-style behavior (place/delete when there's something to
+    // place/delete, navigate otherwise). Plain 3/e scroll the piano-roll's
+    // visible pitch range (3 = up, e = down); Option+3/E do semitone pitch
+    // nudge on the note at the cursor instead, and Shift+Option+3/E do
+    // octave nudge -- see the Option/Shift+Option blocks below. Track prev/
+    // next moved to Cmd+R/Cmd+B once Cmd+3/Cmd+E were needed for vertical
+    // zoom instead.
     // Every branch below routes through trigger() so the shortcut help bar's
     // "last action" indicator always shows what was just pressed and what
     // it did (e.g. "Cmd+E - Next Track") -- separate from the always-visible
@@ -760,6 +1300,16 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
 
     if (key.getModifiers().isCommandDown())
     {
+        // Checked before the plain Cmd+3/Cmd+E zoom bindings below --
+        // piano-roll pitch-view scroll moved here off plain 3/e once those
+        // became the hum semitone nudge (see nudgeHumPitch()). Cmd anchors
+        // this as an app shortcut rather than a text-composition combo, so
+        // (unlike plain Option+E) it isn't at risk of the macOS dead-key
+        // interception issue noted elsewhere in this file.
+        if (key.getModifiers().isAltDown() && key.isKeyCode('3'))
+            return trigger("Cmd+Option+3 - Scroll Pitch Up", [this] { scrollStepGridPitch(1); });
+        if (key.getModifiers().isAltDown() && key.isKeyCode('E'))
+            return trigger("Cmd+Option+E - Scroll Pitch Down", [this] { scrollStepGridPitch(-1); });
         if (key.isKeyCode('S') && key.getModifiers().isShiftDown())
             return trigger("Cmd+Shift+S - Save As", [this] { saveProjectAs(); });
         if (key.isKeyCode('S'))
@@ -772,59 +1322,172 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             return trigger("Cmd+T - Add Track", [this] { addTrack(); });
         if (key.isKeyCode('Y')) // moved off Cmd+I, used infrequently enough that the reach is fine
             return trigger("Cmd+Y - Instrument", [this] { openInstrumentPanel(); });
+        if (key.isKeyCode('P')) // show/hide the current track's plugin editor window
+            return trigger("Cmd+P - Plugin Editor", [this] { togglePluginEditor(); });
         if (key.isKeyCode(',')) // macOS's standard "Preferences" shortcut
             return trigger("Cmd+, - Audio/MIDI Settings", [this] { openAudioMidiSettings(); });
-        if (key.isKeyCode('3')) // previous track (up)
-            return trigger("Cmd+3 - Prev Track", [this] { switchTrack(-1); });
-        if (key.isKeyCode('E')) // next track (down)
-            return trigger("Cmd+E - Next Track", [this] { switchTrack(1); });
-        if (key.isKeyCode('Z')) // zoom out on both axes
-            return trigger("Cmd+Z - Zoom Out", [this] { zoomStepGrid(1.25f); });
-        if (key.isKeyCode('X')) // zoom in on both axes
-            return trigger("Cmd+X - Zoom In", [this] { zoomStepGrid(0.8f); });
+        if (key.isKeyCode('G')) // previous track -- moved off Cmd+R onto Cmd+G/B as a pair
+            return trigger("Cmd+G - Prev Track", [this] { switchTrack(-1); });
+        if (key.isKeyCode('B')) // next track -- moved off Cmd+E, which is now vertical zoom out
+            return trigger("Cmd+B - Next Track", [this] { switchTrack(1); });
+        if (key.isKeyCode('3')) // vertical zoom out -- moved off Cmd+3's old track-switch role
+            return trigger("Cmd+3 - Zoom Out (Vertical)", [this] { zoomStepGridVertical(1.25f); });
+        if (key.isKeyCode('E')) // vertical zoom in -- moved off Cmd+E's old track-switch role
+            return trigger("Cmd+E - Zoom In (Vertical)", [this] { zoomStepGridVertical(0.8f); });
+        if (key.isKeyCode('F')) // horizontal zoom in -- Cmd+F no longer commits (that's plain 'f' now)
+            return trigger("Cmd+F - Zoom In (Horizontal)", [this] { zoomStepGridHorizontal(0.8f); });
+        if (key.isKeyCode('D')) // horizontal zoom out
+            return trigger("Cmd+D - Zoom Out (Horizontal)", [this] { zoomStepGridHorizontal(1.25f); });
+        if (key.isKeyCode('M')) // cycle piano-roll scale tint: Major -> Natural Minor -> Off
+            return trigger("Cmd+M - Cycle Scale", [this] { cycleScale(); });
+        if (key.isKeyCode('C')) // drop the loop END marker at the cursor -- Shift+C does the start marker. 'C' for "Cycle" (Ableton/Cubase's name for loop playback), and left-hand -- 'L' was rejected for landing on the right-hand side of the keyboard, breaking the left-hand-only rule.
+            return trigger("Cmd+C - Set Loop End", [this] { setLoopEndHere(); });
+        if (key.isKeyCode('A')) // toggle the current track's inclusion in ChordEstimator's pooled analysis -- 'A' for "Analysis"
+            return trigger("Cmd+A - Toggle Chord Track", [this] { toggleChordEstimateForCurrentTrack(); });
+        // Standard macOS undo/redo shortcuts (Cmd, not Ctrl, for consistency
+        // with every other modifier in this app -- see the top-of-file
+        // convention notes). Scoped to note edits only, see StepEditGuard.
+        if (key.isKeyCode('Z') && key.getModifiers().isShiftDown())
+            return trigger("Cmd+Shift+Z - Redo", [this] { performRedo(); });
+        if (key.isKeyCode('Z'))
+            return trigger("Cmd+Z - Undo", [this] { performUndo(); });
         return false;
     }
 
-    // Hum input: reuses the octave-shift Z/X and step-right F keys with
-    // Shift instead of adding new plain keys ("同じキーを装飾で使い回して
-    // 節約して" -- economize by reusing existing keys via a modifier).
+    // Octave shift on the note at the cursor: Shift+Option+3/E (checked
+    // before the plain-Shift and plain-Option blocks below so this more
+    // specific combo takes priority). NOTE: Shift+digit combos (Shift+3
+    // alone) were previously found to never reach the app at all here
+    // (intercepted by the OS/active input source before JUCE saw them) --
+    // if Shift+Option+3 has the same problem, 'W' is a working substitute
+    // for '3' throughout this app's key map for exactly that reason.
+    if (key.getModifiers().isShiftDown() && key.getModifiers().isAltDown())
+    {
+        if (key.isKeyCode('3') || key.isKeyCode('W'))
+            return trigger("Shift+Option+3/W - Octave Up", [this] { adjustNotePitch(12); });
+        // 'R' is also accepted for 'E' here -- Option+E is a dead key on the
+        // standard US layout (Option+E waits for a second keystroke to
+        // compose an accented character, e.g. Option+E then A -> "á"),
+        // so the OS's text input system swallows the combo before JUCE ever
+        // sees a normal keyDown for it. Same root cause as the Shift+digit
+        // issue elsewhere in this file, different trigger (dead-key
+        // composition vs. IME digit interception) -- same fix shape: offer
+        // a working alias on an adjacent, non-dead key.
+        if (key.isKeyCode('E') || key.isKeyCode('R'))
+            return trigger("Shift+Option+E/R - Octave Down", [this] { adjustNotePitch(-12); });
+        return false;
+    }
+
+    // Semitone nudge on the note at the cursor: Option+3/E (moved off plain
+    // 3/e, which now scroll the piano-roll's visible pitch range instead).
+    if (key.getModifiers().isAltDown())
+    {
+        if (key.isKeyCode('3'))
+            return trigger("Option+3 - Pitch Up", [this] { adjustNotePitch(1); });
+        // 'R' alias for 'E' -- see the dead-key note in the Shift+Option
+        // block above; Option+E alone has the exact same problem.
+        if (key.isKeyCode('E') || key.isKeyCode('R'))
+            return trigger("Option+E/R - Pitch Down", [this] { adjustNotePitch(-1); });
+        // Tempo: reuses the octave-preview Z (down) / X (up) keys with
+        // Option, same "down/up" sense those already have for z/x, just
+        // scoped to BPM instead of live-input octave.
+        if (key.isKeyCode('Z'))
+            return trigger("Option+Z - Tempo Down", [this] { adjustTempo(-1.0); });
+        if (key.isKeyCode('X'))
+            return trigger("Option+X - Tempo Up", [this] { adjustTempo(1.0); });
+        return false;
+    }
+
+    // Hum duration cycling reuses the octave-shift Z/X keys with Shift
+    // instead of adding new plain keys ("同じキーを装飾で使い回して節約して"
+    // -- economize by reusing existing keys via a modifier).
     if (key.getModifiers().isShiftDown())
     {
         if (key.isKeyCode('Z')) // finer duration
             return trigger("Shift+Z - Finer Duration", [this] { cycleHumDuration(-1); });
         if (key.isKeyCode('X')) // coarser duration
             return trigger("Shift+X - Coarser Duration", [this] { cycleHumDuration(1); });
-        if (key.isKeyCode('F')) // commit current hum pitch
-            return trigger("Shift+F - Commit Hum Note", [this] { commitHumNote(); });
-        if (key.isKeyCode('3')) // octave up on the note at the cursor -- adjustNotePitch takes any semitone delta
-            return trigger("Shift+3 - Octave Up", [this] { adjustNotePitch(12); });
-        if (key.isKeyCode('E')) // octave down on the note at the cursor
-            return trigger("Shift+E - Octave Down", [this] { adjustNotePitch(-12); });
+        // Move the locator by a full measure (4 beats, 4/4 assumed -- this
+        // app has no separate time-signature field) -- a bigger jump than
+        // d/f's note-aware navigation, for skipping ahead/back through a
+        // song quickly regardless of what's under the cursor.
+        if (key.isKeyCode('F'))
+            return trigger("Shift+F - Jump Forward 1 Bar", [this]
+            {
+                moveCursor(4 * project.tracks[(size_t) cursorTrackIndex].clip.stepsPerQuarterNote);
+            });
+        if (key.isKeyCode('D'))
+            return trigger("Shift+D - Jump Back 1 Bar", [this]
+            {
+                moveCursor(-4 * project.tracks[(size_t) cursorTrackIndex].clip.stepsPerQuarterNote);
+            });
+        // Track switch, same up/down feel as plain 3/e's pitch-scroll ('3' =
+        // up = prev track, 'e' = down = next track). 'W' is also accepted
+        // for '3' here -- Shift+digit combos were confirmed earlier to never
+        // reach this app at all (intercepted by the OS/active input source
+        // before JUCE sees them), same reasoning as Shift+Option+3/W.
+        if (key.isKeyCode('3') || key.isKeyCode('W'))
+            return trigger("Shift+3/W - Prev Track", [this] { switchTrack(-1); });
+        if (key.isKeyCode('E'))
+            return trigger("Shift+E - Next Track", [this] { switchTrack(1); });
+        if (key.isKeyCode('C')) // drop the loop START marker at the cursor -- Cmd+C does the end marker
+            return trigger("Shift+C - Set Loop Start", [this] { setLoopStartHere(); });
         return false;
     }
 
     if (key == juce::KeyPress::spaceKey)
-        return trigger("Space - Rest", [this] { insertRestAndAdvance(); });
+        return trigger("Space - Advance", [this] { advanceByDuration(); });
     if (key == juce::KeyPress::tabKey)
         return trigger("Tab - Play/Stop", [this] { togglePlayback(); });
 
     auto c = juce::CharacterFunctions::toLowerCase((juce::juce_wchar) key.getTextCharacter());
 
+    // 3/e/d/f/g/t/z/x are the only keys that mean something different in
+    // Session View -- everything else in this switch (a,v,c,s) plus every
+    // Space/Tab/Cmd/Shift/Option shortcut above stays identical in both
+    // views. Session View's own scheme: 3/e move the track (row) cursor,
+    // d/f move the slot (column) cursor -- mirroring how 3/e and d/f
+    // already move things in the piano roll, just repurposed onto the
+    // grid's two axes -- while z/x (stop/launch) and g/t (capture/load)
+    // carry the actual clip actions, kept off the navigation keys so
+    // moving the cursor around never accidentally launches or stops
+    // anything.
+    auto inSessionView = currentViewMode == ViewMode::Session;
+
     switch (c)
     {
-        case 'd': return trigger("d - Prev Note/Step", [this] { moveCursorByNoteOrStep(-1); });
-        case 'f': return trigger("f - Next Note/Step", [this] { moveCursorByNoteOrStep(1); });
+        case 'd': return inSessionView
+            ? trigger("d - Prev Slot", [this] { moveSessionCursor(-1); })
+            : trigger("d - Delete Note/Prev", [this] { handleBackwardKey(); });
+        case 'f': return inSessionView
+            ? trigger("f - Next Slot", [this] { moveSessionCursor(1); })
+            : trigger("f - Place Hum/Next", [this] { handleForwardKey(); });
         case 'a': return trigger("a - Clear Step", [this] { clearCurrentStep(); });
-        case 'g': return trigger("g - Delete+Retreat", [this] { deleteAndRetreat(); });
-        case 't': return trigger("t - Tie", [this] { tieCurrentStep(); });
-        case 'z': return trigger("z - Octave Down", [this] { shiftOctave(-1); });
-        case 'x': return trigger("x - Octave Up", [this] { shiftOctave(1); });
-        case 'c': return trigger("c - Toggle Mode", [this] { toggleInputMode(); });
+        case 'g': return inSessionView
+            ? trigger("g - Capture to Slot", [this] { captureClipToSlotAtCursor(); })
+            : trigger("g - Delete+Retreat", [this] { deleteAndRetreat(); });
+        case 't': return inSessionView
+            ? trigger("t - Load Slot to Editor", [this] { loadSlotAtCursorToEditor(); })
+            : trigger("t - Tie", [this] { tieCurrentStep(); });
+        case 'z': return inSessionView
+            ? trigger("z - Stop Track", [this] { stopCurrentTrackSlot(); })
+            : trigger("z - Octave Down", [this] { shiftOctave(-1); });
+        case 'x': return inSessionView
+            ? trigger("x - Launch Slot", [this] { launchSlotAtCursor(); })
+            : trigger("x - Octave Up", [this] { shiftOctave(1); });
         case 'v': return trigger("v - Toggle Hum", [this] { toggleHumInput(); }); // toggle hum-listening mode on/off
-        case '3': return trigger("3 - Pitch Up", [this] { adjustNotePitch(1); });   // distinct from Cmd+3 track switch
-        case 'e': return trigger("e - Pitch Down", [this] { adjustNotePitch(-1); }); // distinct from Cmd+E track switch
-        case '1': return trigger("1 - Scroll Pitch Down", [this] { scrollStepGridPitch(-1); });
-        case '2': return trigger("2 - Scroll Pitch Up", [this] { scrollStepGridPitch(1); });
+        case 'c': return trigger("c - Toggle Loop", [this] { toggleLoopEnabled(); }); // 'C' for "Cycle" -- also left-hand, unlike the rejected 'l'
+        case 's': return trigger("s - Toggle Session View", [this] { toggleViewMode(); });
+        case '3': return inSessionView
+            ? trigger("3 - Prev Track", [this] { switchTrack(-1); })
+            // Nudges the HUM-detected pitch by a semitone, up -- a quick
+            // correction for the YIN detector occasionally landing a
+            // semitone off. Doesn't affect MIDI input (see shiftedPendingPitch()).
+            // View-scroll (this key's old job) moved to Cmd+Option+3/E.
+            : trigger("3 - Hum Pitch Up", [this] { nudgeHumPitch(1); });
+        case 'e': return inSessionView
+            ? trigger("e - Next Track", [this] { switchTrack(1); })
+            : trigger("e - Hum Pitch Down", [this] { nudgeHumPitch(-1); });
         default: break;
     }
 
@@ -952,6 +1615,21 @@ void MainEditorComponent::openProject()
                     currentProjectFile = file;
                     cursorTrackIndex = 0;
                     cursorStepIndex = 0;
+                    sessionCursorSlotIndex = 0;
+                    // Old undo entries reference step data by track index
+                    // into the project that just got replaced -- meaningless
+                    // (and, if track counts differ, unsafe) to keep around.
+                    undoManager.clearUndoHistory();
+                    // Every existing plugin editor window points at an
+                    // instrument that's about to be replaced/destroyed.
+                    pluginEditorWindowsByTrack.clear();
+                    pluginEditorDesiredVisible.clear();
+                    // editingSlotIndex isn't persisted (always -1 right
+                    // after a load, see its declaration) -- land in Session
+                    // View rather than an editing buffer that isn't linked
+                    // to anything in it yet.
+                    currentViewMode = ViewMode::Session;
+                    resized();
                     refreshChildViews();
                     restoreInstrumentsFromProject();
                 }
@@ -965,13 +1643,22 @@ void MainEditorComponent::newProject()
 {
     playbackEngine.stop();
     playbackEngine.setTrackInstrument(0, nullptr); // clear any leftover instrument from the previous project
+    pluginEditorWindowsByTrack.clear(); // pointed at that now-destroyed instrument
+    pluginEditorDesiredVisible.clear();
 
     project = Project{};
     project.tracks.push_back(Track{});
     currentProjectFile = juce::File();
     cursorTrackIndex = 0;
     cursorStepIndex = 0;
+    sessionCursorSlotIndex = 0;
+    undoManager.clearUndoHistory(); // see the matching comment in openProject()
 
+    // A blank project has nothing linked to any slot yet -- start where
+    // that's created, not in an empty piano roll disconnected from Session
+    // View's grid.
+    currentViewMode = ViewMode::Session;
+    resized();
     refreshChildViews();
 }
 
@@ -995,5 +1682,21 @@ void MainEditorComponent::resized()
 
     transportBar.setBounds(bounds.removeFromTop(28));
     trackList.setBounds(bounds.removeFromLeft(200));
-    stepGrid.setBounds(bounds);
+
+    // Session View and the piano roll share this same central area --
+    // exactly one is visible at a time, per currentViewMode.
+    auto pianoRollMode = currentViewMode == ViewMode::PianoRoll;
+    chordEstimateBar.setVisible(pianoRollMode);
+    stepGrid.setVisible(pianoRollMode);
+    sessionGrid.setVisible(!pianoRollMode);
+
+    if (pianoRollMode)
+    {
+        chordEstimateBar.setBounds(bounds.removeFromTop(22));
+        stepGrid.setBounds(bounds);
+    }
+    else
+    {
+        sessionGrid.setBounds(bounds);
+    }
 }

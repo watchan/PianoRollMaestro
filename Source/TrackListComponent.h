@@ -13,5 +13,6 @@ public:
 private:
     juce::StringArray trackNames;
     juce::StringArray instrumentNames;
+    std::vector<bool> chordIncluded; // Track::includeInChordEstimate, cached per row for paint()
     int currentTrack = 0;
 };

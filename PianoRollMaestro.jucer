@@ -65,6 +65,14 @@
             file="Source/MicLevelMeterComponent.h"/>
       <FILE id="prm0030" name="ShortcutHelpBarComponent.h" compile="0" resource="0"
             file="Source/ShortcutHelpBarComponent.h"/>
+      <FILE id="prm0031" name="ChordEstimator.cpp" compile="1" resource="0"
+            file="Source/ChordEstimator.cpp"/>
+      <FILE id="prm0032" name="ChordEstimator.h" compile="0" resource="0"
+            file="Source/ChordEstimator.h"/>
+      <FILE id="prm0033" name="ChordEstimateBarComponent.h" compile="0" resource="0"
+            file="Source/ChordEstimateBarComponent.h"/>
+      <FILE id="prm0034" name="SessionGridComponent.h" compile="0" resource="0"
+            file="Source/SessionGridComponent.h"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>

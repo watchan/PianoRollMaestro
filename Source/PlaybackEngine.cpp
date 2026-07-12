@@ -117,6 +117,51 @@ void PlaybackEngine::stop()
     }
 }
 
+void PlaybackEngine::sendAllNotesOffForTrack(int trackIndex)
+{
+    if (trackIndex < 0 || trackIndex >= (int) trackAudioStates.size())
+        return;
+
+    auto& state = *trackAudioStates[(size_t) trackIndex];
+    state.fallbackSynth.allNotesOff(1, true);
+
+    if (state.plugin != nullptr)
+    {
+        juce::MidiBuffer allNotesOffMidi;
+        allNotesOffMidi.addEvent(juce::MidiMessage::allNotesOff(1), 0);
+
+        auto pluginChannels = juce::jmax(2, state.plugin->getTotalNumOutputChannels());
+        juce::AudioBuffer<float> scratch(pluginChannels, juce::jmax(1, blockSize));
+        scratch.clear();
+        state.plugin->processBlock(scratch, allNotesOffMidi);
+    }
+}
+
+void PlaybackEngine::sendAllNotesOffForLoop()
+{
+    for (int t = 0; t < (int) trackAudioStates.size(); ++t)
+        sendAllNotesOffForTrack(t);
+}
+
+void PlaybackEngine::retriggerTrack(int trackIndex)
+{
+    if (trackIndex < 0 || trackIndex >= (int) trackAudioStates.size())
+        return;
+
+    // Same reasoning as sendAllNotesOffForLoop(): about to drop this
+    // track's pendingEvents/cursor, so silence it first rather than risk a
+    // stuck note whose matching note-off never fires.
+    sendAllNotesOffForTrack(trackIndex);
+
+    pendingEvents.erase(
+        std::remove_if(pendingEvents.begin(), pendingEvents.end(),
+            [trackIndex](const ScheduledEvent& ev) { return ev.trackIndex == trackIndex; }),
+        pendingEvents.end());
+
+    if (trackIndex < (int) trackCursors.size())
+        trackCursors[(size_t) trackIndex] = TrackCursor{ 0, blockStartSample };
+}
+
 void PlaybackEngine::liveNoteOn(int trackIndex, int noteNumber, float velocity)
 {
     ensureTrackAudioStates();
@@ -210,6 +255,13 @@ juce::AudioPluginInstance* PlaybackEngine::getTrackInstrument(int trackIndex)
     return trackAudioStates[(size_t) trackIndex]->plugin.get();
 }
 
+int PlaybackEngine::getTrackPlaybackStep(int trackIndex) const
+{
+    if (!playing || trackIndex < 0 || trackIndex >= (int) trackCursors.size())
+        return -1;
+    return trackCursors[(size_t) trackIndex].nextStepIndex;
+}
+
 void PlaybackEngine::scheduleUpTo(int64_t blockEndSample)
 {
     if (project == nullptr)
@@ -217,15 +269,38 @@ void PlaybackEngine::scheduleUpTo(int64_t blockEndSample)
 
     for (size_t t = 0; t < project->tracks.size(); ++t)
     {
-        auto& clip = project->tracks[t].clip;
+        auto& track = project->tracks[t];
+        if (track.playingSlotIndex == -2)
+            continue; // explicitly stopped (Session View) -- schedules nothing
+
+        // -1 (default) plays the piano-roll editing buffer, same as before
+        // Session View existed; >=0 plays that launched scene slot instead.
+        auto& clip = (track.playingSlotIndex >= 0 && track.playingSlotIndex < (int) track.sceneClips.size())
+            ? track.sceneClips[(size_t) track.playingSlotIndex]
+            : track.clip;
         auto& cursor = trackCursors[t];
 
         auto stepSamples = (int64_t) std::round(clip.stepDurationSeconds(project->tempoBpm) * sampleRate);
         if (stepSamples <= 0)
             continue;
 
-        while (cursor.nextStepIndex < (int) clip.steps.size() && cursor.nextStepSample < blockEndSample)
+        // A launched Session View slot (playingSlotIndex >= 0) loops
+        // indefinitely, the way every clip launcher's clips do -- that's
+        // the whole point of "launching" one. The piano-roll editing
+        // buffer (-1) does NOT auto-loop here; its repeat behavior is the
+        // separate, explicit global loop region (see the loop-wrap block
+        // in renderNextBlock() below), matching pre-Session-View behavior.
+        auto loopsForever = track.playingSlotIndex >= 0;
+
+        while (cursor.nextStepSample < blockEndSample)
         {
+            if (cursor.nextStepIndex >= (int) clip.steps.size())
+            {
+                if (!loopsForever || clip.steps.empty())
+                    break; // reached the end -- stop scheduling this track (or nothing to loop at all)
+                cursor.nextStepIndex = 0; // wrap back to the start of this clip and keep going
+            }
+
             auto& step = clip.steps[(size_t) cursor.nextStepIndex];
 
             if (!step.tiedFromPrevious)
@@ -283,6 +358,30 @@ void PlaybackEngine::renderNextBlock(juce::AudioBuffer<float>& audioOut, juce::M
 
     if (playing)
     {
+        // Loop wrap: checked once per block against where THIS block is
+        // about to start (not mid-block), so the wrap point is quantized to
+        // the audio block size (~11ms at 512 samples/44.1kHz) rather than
+        // sample-accurate -- an acceptable trade-off given grid steps
+        // themselves are already much coarser than that. If the previous
+        // block's end already reached or passed the loop end, jump the
+        // transport back to the loop start and reset every track's
+        // scheduling cursor to match before scheduling this block.
+        if (project->loopEnabled && project->loopEndStep > project->loopStartStep && !project->tracks.empty())
+        {
+            auto stepSamples = (int64_t) std::round(project->tracks[0].clip.stepDurationSeconds(project->tempoBpm) * sampleRate);
+            auto loopEndSample = stepSamples * (int64_t) project->loopEndStep;
+
+            if (stepSamples > 0 && blockStartSample >= loopEndSample)
+            {
+                sendAllNotesOffForLoop();
+                pendingEvents.clear();
+                blockStartSample = stepSamples * (int64_t) project->loopStartStep;
+
+                for (auto& cursor : trackCursors)
+                    cursor = TrackCursor{ project->loopStartStep, blockStartSample };
+            }
+        }
+
         blockEndSample = blockStartSample + numSamples;
         scheduleUpTo(blockEndSample);
 
@@ -353,12 +452,40 @@ void PlaybackEngine::renderNextBlock(juce::AudioBuffer<float>& audioOut, juce::M
     {
         blockStartSample = blockEndSample;
 
-        bool allTracksDone = true;
-        for (size_t t = 0; t < trackCursors.size(); ++t)
-            if (trackCursors[t].nextStepIndex < (int) project->tracks[t].clip.steps.size())
-                allTracksDone = false;
+        // A track running out of steps shouldn't stop playback while
+        // looping -- its cursor just sits at clip.steps.size() (scheduleUpTo
+        // stops advancing it) until the wrap check at the top of the next
+        // call resets it back to the loop start.
+        bool loopingActive = project->loopEnabled && project->loopEndStep > project->loopStartStep;
 
-        if (allTracksDone && pendingEvents.empty())
-            playing = false;
+        if (!loopingActive)
+        {
+            bool allTracksDone = true;
+            for (size_t t = 0; t < trackCursors.size(); ++t)
+            {
+                auto& track = project->tracks[t];
+
+                if (track.playingSlotIndex >= 0 && track.playingSlotIndex < (int) track.sceneClips.size())
+                {
+                    // A launched Session View slot loops forever (see
+                    // scheduleUpTo()) -- as long as it actually has content,
+                    // it never counts as "done" the way a linear main-clip
+                    // playthrough does, or the transport would auto-stop
+                    // out from under an actively-looping clip.
+                    if (!track.sceneClips[(size_t) track.playingSlotIndex].steps.empty())
+                        allTracksDone = false;
+                    continue;
+                }
+
+                if (track.playingSlotIndex == -2)
+                    continue; // explicitly stopped -- contributes nothing either way
+
+                if (trackCursors[t].nextStepIndex < (int) track.clip.steps.size())
+                    allTracksDone = false;
+            }
+
+            if (allTracksDone && pendingEvents.empty())
+                playing = false;
+        }
     }
 }

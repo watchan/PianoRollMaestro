@@ -11,11 +11,7 @@ void MidiInputRouter::setActiveDevice(const juce::String& deviceIdentifier)
 void MidiInputRouter::handleIncomingMidiMessage(juce::MidiInput*, const juce::MidiMessage& message)
 {
     // Called on the MIDI thread; hop to the message thread before touching
-    // pendingNotes, mode, or the (message-thread-only) juce::Timer.
-    // Live audio preview (onLiveNote/onLiveControllerMessage) always fires,
-    // regardless of mode -- you should be able to hear what you're playing
-    // while step-recording, not just in PlayMonitor. StepRecord additionally
-    // captures note-ons into the pending chord for the current step.
+    // anything else (onLiveNote's targets aren't thread-safe).
     if (message.isNoteOn())
     {
         juce::MessageManager::callAsync([this,
@@ -44,33 +40,6 @@ void MidiInputRouter::handleIncomingMidiMessage(juce::MidiInput*, const juce::Mi
 
 void MidiInputRouter::injectNote(int pitch, float velocity, bool isOn)
 {
-    // StepRecord additionally captures note-ons into the pending chord for
-    // the current step. Live audio preview (onLiveNote) always fires,
-    // regardless of mode -- you should be able to hear what you're playing
-    // while step-recording, not just in PlayMonitor.
-    if (isOn)
-    {
-        if (mode == MidiInputMode::StepRecord)
-        {
-            pendingNotes.push_back({ pitch, velocity });
-            startTimer(chordCaptureWindowMs);
-        }
-
-        if (onLiveNote)
-            onLiveNote(pitch, velocity, true);
-    }
-    else if (onLiveNote)
-    {
-        onLiveNote(pitch, 0.0f, false);
-    }
-}
-
-void MidiInputRouter::timerCallback()
-{
-    stopTimer();
-
-    if (onStepChordCaptured && !pendingNotes.empty())
-        onStepChordCaptured(pendingNotes);
-
-    pendingNotes.clear();
+    if (onLiveNote)
+        onLiveNote(pitch, isOn ? velocity : 0.0f, isOn);
 }

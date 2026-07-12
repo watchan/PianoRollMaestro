@@ -37,9 +37,11 @@ public:
 
 private:
     juce::String helpText =
-        "d/f:move  a:clear  g:delete  t:tie  z/x:octave  3/e:pitch  1/2:scroll pitch  c:mode  v:hum  Space:rest  Tab:play  |  "
-        "Shift+Z/X:duration  Shift+F:commit  |  "
-        "Cmd+S/Shift+S/O/N:save/save-as/open/new  Cmd+T:track  Cmd+Y:instrument  Cmd+,:audio  Cmd+3/E:track switch  Cmd+Z/X:zoom";
+        "s:toggle session view  |  PianoRoll: d:prev(delete if match) f:place/next a:clear g:delete t:tie z/x:octave 3/e:hum pitch v:hum c:loop Space:advance Tab:play  |  "
+        "Session: 3/e:prev/next track d/f:prev/next slot z:stop track x:launch slot g:capture to slot t:load slot  |  "
+        "Option+3/E(or R):pitch  Option+Z/X:tempo  Shift+Option+3/E(or W/R):octave  Shift+Z/X:duration  Shift+D/F:jump 1 bar  Shift+3/E(or W):track switch  Shift+C:loop start  Cmd+C:loop end  Cmd+Option+3/E:scroll pitch  |  "
+        "Cmd+S/Shift+S/O/N:save/save-as/open/new  Cmd+T:track  Cmd+Y:instrument  Cmd+P:plugin editor  Cmd+,:audio  "
+        "Cmd+G/B:track switch  Cmd+F/D:zoom h  Cmd+3/E:zoom v(out/in)  Cmd+M:scale  Cmd+A:toggle chord track  Cmd+Z:undo  Cmd+Shift+Z:redo";
 
     juce::String lastAction;
 };

@@ -1,6 +1,6 @@
 #pragma once
+#include <vector>
 #include <JuceHeader.h>
-#include "MidiInputRouter.h"
 
 // Visual-only readout; nothing here is mouse-interactive.
 class TransportBarComponent : public juce::Component
@@ -8,20 +8,29 @@ class TransportBarComponent : public juce::Component
 public:
     void setPlaying(bool isPlaying) { playing = isPlaying; repaint(); }
     void setBpm(double bpm) { bpmValue = bpm; repaint(); }
-    void setMode(MidiInputMode m) { mode = m; repaint(); }
     void setOctaveShift(int octaves) { octaveShift = octaves; repaint(); }
 
-    // isActive = hum-listening mode toggled on with 'v'; noteNumber = -1
-    // when nothing's been heard yet this session, otherwise the last note
-    // detected (kept even after humming stops, so Shift+F can commit it at
-    // your own pace -- see MainEditorComponent's humInputListener.onNoteChange);
-    // durationSteps is the Shift+Z/Shift+X commit-duration preset (1/2/4 =
-    // 16th/8th/quarter).
-    void setHumStatus(bool isActive, int noteNumber, int durationSteps)
+    // 'v' toggles this -- while ON, 'f'/'d' actually place/delete notes
+    // (see MainEditorComponent::handleForwardKey()/handleBackwardKey());
+    // while OFF they're pure navigation. Drawn as a filled badge, not just
+    // text, so the current state is readable at a glance.
+    void setHumInputActive(bool isActive) { humInputActive = isActive; repaint(); }
+
+    // 'c' toggles this -- whether the loop region (set with Shift+C/Cmd+C,
+    // drawn in stepGrid) actually makes playback wrap. Same filled-badge
+    // treatment as the HUM indicator.
+    void setLoopEnabled(bool isEnabled) { loopEnabled = isEnabled; repaint(); }
+
+    // Empty = nothing's been heard yet, otherwise the last note(s) detected
+    // from EITHER the hum monitor (always one) or the MIDI keyboard
+    // (possibly a chord) -- kept even after the note(s) stop sounding, so
+    // 'f' can commit at your own pace -- see
+    // MainEditorComponent::handleHumNoteChange()/handleMidiNoteChange().
+    // durationSteps is the Shift+Z/Shift+X commit-duration preset.
+    void setPendingNoteStatus(const std::vector<int>& pitches, int durationSteps)
     {
-        humActive = isActive;
-        humNote = noteNumber;
-        humDurationSteps = durationSteps;
+        pendingNotePitches = pitches;
+        pendingNoteDurationSteps = durationSteps;
         repaint();
     }
 
@@ -30,10 +39,10 @@ public:
 private:
     bool playing = false;
     double bpmValue = 120.0;
-    MidiInputMode mode = MidiInputMode::StepRecord;
     int octaveShift = 0;
+    bool humInputActive = false;
+    bool loopEnabled = false;
 
-    bool humActive = false;
-    int humNote = -1;
-    int humDurationSteps = 1;
+    std::vector<int> pendingNotePitches;
+    int pendingNoteDurationSteps = 1;
 };
