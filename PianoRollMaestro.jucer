@@ -73,6 +73,14 @@
             file="Source/ChordEstimateBarComponent.h"/>
       <FILE id="prm0034" name="SessionGridComponent.h" compile="0" resource="0"
             file="Source/SessionGridComponent.h"/>
+      <FILE id="prm0035" name="VirtualKeyboardMaps.h" compile="0" resource="0"
+            file="Source/VirtualKeyboardMaps.h"/>
+      <FILE id="prm0036" name="KeyboardOverlayComponent.h" compile="0" resource="0"
+            file="Source/KeyboardOverlayComponent.h"/>
+      <FILE id="prm0037" name="KeyboardOverlayComponent.cpp" compile="1" resource="0"
+            file="Source/KeyboardOverlayComponent.cpp"/>
+      <FILE id="prm0038" name="KeyboardOverlayWindow.h" compile="0" resource="0"
+            file="Source/KeyboardOverlayWindow.h"/>
     </GROUP>
   </MAINGROUP>
   <MODULES>

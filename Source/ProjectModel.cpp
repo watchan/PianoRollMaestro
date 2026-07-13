@@ -1,12 +1,8 @@
 #include "ProjectModel.h"
 
-int MidiClip::totalLengthInSteps() const
+int MidiClip::effectiveLengthInSteps() const
 {
-    int total = 0;
-    for (auto& step : steps)
-        if (!step.tiedFromPrevious)
-            total += step.lengthInSteps;
-    return total;
+    return explicitLengthInSteps > 0 ? explicitLengthInSteps : (int) steps.size();
 }
 
 double MidiClip::stepDurationSeconds(double bpm) const
@@ -61,6 +57,7 @@ juce::ValueTree MidiClip::toValueTree() const
 {
     juce::ValueTree tree("Clip");
     tree.setProperty("stepsPerQuarterNote", stepsPerQuarterNote, nullptr);
+    tree.setProperty("explicitLengthInSteps", explicitLengthInSteps, nullptr);
 
     for (auto& step : steps)
         tree.appendChild(stepToValueTree(step), nullptr);
@@ -71,6 +68,7 @@ juce::ValueTree MidiClip::toValueTree() const
 void MidiClip::loadFromValueTree(const juce::ValueTree& tree)
 {
     stepsPerQuarterNote = (int) tree.getProperty("stepsPerQuarterNote", 12);
+    explicitLengthInSteps = (int) tree.getProperty("explicitLengthInSteps", 0);
 
     steps.clear();
     for (int i = 0; i < tree.getNumChildren(); ++i)
@@ -113,7 +111,7 @@ void Track::loadFromValueTree(const juce::ValueTree& tree)
     name = tree.getProperty("name", "Track 1").toString();
     midiChannel = (int) tree.getProperty("midiChannel", 1);
     playingSlotIndex = (int) tree.getProperty("playingSlotIndex", -1);
-    includeInChordEstimate = (bool) tree.getProperty("includeInChordEstimate", true);
+    includeInChordEstimate = (bool) tree.getProperty("includeInChordEstimate", false);
 
     auto clipTree = tree.getChildWithName("Clip");
     if (clipTree.isValid())
@@ -151,6 +149,7 @@ juce::ValueTree Project::toValueTree() const
     tree.setProperty("loopStartStep", loopStartStep, nullptr);
     tree.setProperty("loopEndStep", loopEndStep, nullptr);
     tree.setProperty("loopEnabled", loopEnabled, nullptr);
+    tree.setProperty("metronomeEnabled", metronomeEnabled, nullptr);
 
     for (auto& track : tracks)
         tree.appendChild(track.toValueTree(), nullptr);
@@ -164,6 +163,7 @@ void Project::loadFromValueTree(const juce::ValueTree& tree)
     loopStartStep = (int) tree.getProperty("loopStartStep", 0);
     loopEndStep = (int) tree.getProperty("loopEndStep", 0);
     loopEnabled = (bool) tree.getProperty("loopEnabled", false);
+    metronomeEnabled = (bool) tree.getProperty("metronomeEnabled", false);
 
     tracks.clear();
     for (int i = 0; i < tree.getNumChildren(); ++i)

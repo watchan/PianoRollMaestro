@@ -142,7 +142,7 @@ std::vector<ChordEstimate> ChordEstimator::estimate(const Project& project, int 
     int totalSteps = 0;
     for (auto& track : project.tracks)
         if (track.includeInChordEstimate)
-            totalSteps = juce::jmax(totalSteps, (int) track.clip.steps.size());
+            totalSteps = juce::jmax(totalSteps, track.clip.effectiveLengthInSteps());
     if (totalSteps == 0)
         return segments;
 

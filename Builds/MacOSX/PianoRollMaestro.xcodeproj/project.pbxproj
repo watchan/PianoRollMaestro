@@ -46,6 +46,7 @@
 		B644A17C398857DAD6BB0E1B /* include_juce_audio_processors.mm */ = {isa = PBXBuildFile; fileRef = C3F559B490FAE0A11E3B9886; };
 		B99EA4F393547B2C3FC321E6 /* CoreAudioKit.framework */ = {isa = PBXBuildFile; fileRef = 41B0E24907E4C3E02C492DF0; };
 		BB5A478A7E8D45E2D06788CA /* include_juce_audio_processors_lv2_libs.cpp */ = {isa = PBXBuildFile; fileRef = E957223797F09AFF5C94AC6A; };
+		BFDC33B8C4141ABD41A4DCD5 /* KeyboardOverlayComponent.cpp */ = {isa = PBXBuildFile; fileRef = 501FF0D8192C955AF83A2828; };
 		C5109F5052BC638A57A90CA2 /* Main.cpp */ = {isa = PBXBuildFile; fileRef = CD6AF9FEE9DCB90FD8E6855F; };
 		DE4637778A384E8A30FECD14 /* Foundation.framework */ = {isa = PBXBuildFile; fileRef = FFE4950E34E0BE61FDC1E361; };
 		F05770812C47358F079CD919 /* include_juce_gui_extra.mm */ = {isa = PBXBuildFile; fileRef = 467B74F1A44272F4596AAEAC; };
@@ -80,8 +81,10 @@
 		4206E4CDE92D566D8165F5A6 /* PluginHost.h */ /* PluginHost.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = PluginHost.h; path = ../../Source/PluginHost.h; sourceTree = SOURCE_ROOT; };
 		467B74F1A44272F4596AAEAC /* include_juce_gui_extra.mm */ /* include_juce_gui_extra.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; name = include_juce_gui_extra.mm; path = ../../JuceLibraryCode/include_juce_gui_extra.mm; sourceTree = SOURCE_ROOT; };
 		4EF617D8D89C95C4812E98C8 /* InstrumentPanelComponent.cpp */ /* InstrumentPanelComponent.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = InstrumentPanelComponent.cpp; path = ../../Source/InstrumentPanelComponent.cpp; sourceTree = SOURCE_ROOT; };
+		501FF0D8192C955AF83A2828 /* KeyboardOverlayComponent.cpp */ /* KeyboardOverlayComponent.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = KeyboardOverlayComponent.cpp; path = ../../Source/KeyboardOverlayComponent.cpp; sourceTree = SOURCE_ROOT; };
 		5E7759A6255FE9CAB9E8D112 /* HumInputListener.cpp */ /* HumInputListener.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = HumInputListener.cpp; path = ../../Source/HumInputListener.cpp; sourceTree = SOURCE_ROOT; };
 		60561313A8DF375D887B24B1 /* QuartzCore.framework */ /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
+		629592E98CF17F8E1993A195 /* KeyboardOverlayWindow.h */ /* KeyboardOverlayWindow.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = KeyboardOverlayWindow.h; path = ../../Source/KeyboardOverlayWindow.h; sourceTree = SOURCE_ROOT; };
 		6409AC6E65A28C0D7C655353 /* juce_events */ /* juce_events */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_events; path = "~/JUCE/modules/juce_events"; sourceTree = "<absolute>"; };
 		6456AADA52A1901931D850A5 /* AudioMidiSettingsWindow.h */ /* AudioMidiSettingsWindow.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = AudioMidiSettingsWindow.h; path = ../../Source/AudioMidiSettingsWindow.h; sourceTree = SOURCE_ROOT; };
 		64D6008F1ED927217E814F23 /* CoreAudio.framework */ /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
@@ -121,9 +124,11 @@
 		CF07397E29D82800E845488C /* SimpleSineVoice.h */ /* SimpleSineVoice.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = SimpleSineVoice.h; path = ../../Source/SimpleSineVoice.h; sourceTree = SOURCE_ROOT; };
 		D0A3A691A67F519B4B659FA6 /* MetalKit.framework */ /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		D3A4D83AA7C9E9D07B8F78E7 /* include_juce_graphics_Sheenbidi.c */ /* include_juce_graphics_Sheenbidi.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; name = include_juce_graphics_Sheenbidi.c; path = ../../JuceLibraryCode/include_juce_graphics_Sheenbidi.c; sourceTree = SOURCE_ROOT; };
+		D9D52FC6AA5D7F41E68A91ED /* KeyboardOverlayComponent.h */ /* KeyboardOverlayComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = KeyboardOverlayComponent.h; path = ../../Source/KeyboardOverlayComponent.h; sourceTree = SOURCE_ROOT; };
 		D9D70F0B5A478CFC899DADC1 /* JuceHeader.h */ /* JuceHeader.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = JuceHeader.h; path = ../../JuceLibraryCode/JuceHeader.h; sourceTree = SOURCE_ROOT; };
 		DA238139C516D729F0A3FA9B /* juce_core */ /* juce_core */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_core; path = "~/JUCE/modules/juce_core"; sourceTree = "<absolute>"; };
 		DB09F1FF05A442A2DB436E21 /* juce_gui_extra */ /* juce_gui_extra */ = {isa = PBXFileReference; lastKnownFileType = folder; name = juce_gui_extra; path = "~/JUCE/modules/juce_gui_extra"; sourceTree = "<absolute>"; };
+		DB1EFE01305585424AB36126 /* VirtualKeyboardMaps.h */ /* VirtualKeyboardMaps.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = VirtualKeyboardMaps.h; path = ../../Source/VirtualKeyboardMaps.h; sourceTree = SOURCE_ROOT; };
 		DC66FE895752B8A89149A6A5 /* Cocoa.framework */ /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
 		DE7ADCBF2A06408E6C9498F9 /* TrackListComponent.h */ /* TrackListComponent.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = TrackListComponent.h; path = ../../Source/TrackListComponent.h; sourceTree = SOURCE_ROOT; };
 		E043DB3360F8E26FB7FACB36 /* IOKit.framework */ /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
@@ -227,6 +232,10 @@
 				88C0869212E48C9C5280D494,
 				A838B4696F8530E37DE96057,
 				CC26CC92759C3FFE3EFEF82B,
+				DB1EFE01305585424AB36126,
+				D9D52FC6AA5D7F41E68A91ED,
+				501FF0D8192C955AF83A2828,
+				629592E98CF17F8E1993A195,
 			);
 			name = Source;
 			sourceTree = "<group>";
@@ -408,6 +417,7 @@
 				0921B3D6788E5464364727E7,
 				2E4620C2F8C8F25BFB9C1B24,
 				57961425C4CD67C2059CCA58,
+				BFDC33B8C4141ABD41A4DCD5,
 				5BCA0A0EF2317799F5DE6BE4,
 				4A1D789AE4F51BD8782CA5D7,
 				B5082CAE2ACB181D91CB4C1D,

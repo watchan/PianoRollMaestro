@@ -1,4 +1,5 @@
 #include "StepGridComponent.h"
+#include <algorithm>
 
 void StepGridComponent::setClip(const MidiClip* clipIn, int cursorStepIn)
 {
@@ -68,6 +69,15 @@ void StepGridComponent::setLoopRegion(int startStepIn, int endStepIn, bool enabl
     repaint();
 }
 
+void StepGridComponent::setSelectedPitches(const std::vector<int>& pitches)
+{
+    if (selectedPitches == pitches)
+        return;
+
+    selectedPitches = pitches;
+    repaint();
+}
+
 void StepGridComponent::zoomVertical(float factor)
 {
     auto centrePitch = lowestVisiblePitch + visiblePitchRows / 2;
@@ -105,10 +115,15 @@ void StepGridComponent::paint(juce::Graphics& g)
 
     // Top strip reserved for measure numbers -- everything below (rows,
     // cursor/playhead lines, note blocks) is offset down by gridTop instead
-    // of starting at y=0.
+    // of starting at y=0. Bottom strip reserved for the velocity lane --
+    // gridHeight (and rowHeight, derived from it) covers pitch ROWS only;
+    // full-height indicators (measure/beat lines, playhead, clip-end
+    // boundary) still reach all the way to getHeight(), past the rows and
+    // through the lane, so they stay readable against it.
     auto gridTop = measureLabelHeight;
-    auto gridHeight = (float) getHeight() - gridTop;
+    auto gridHeight = (float) getHeight() - gridTop - velocityLaneHeight;
     auto rowHeight = gridHeight / (float) numRows;
+    auto velocityLaneTop = gridTop + gridHeight;
 
     // 4/4 assumed throughout this app (no separate time-signature field --
     // see Shift+D/F's bar-jump in MainEditorComponent), so a measure is
@@ -205,7 +220,7 @@ void StepGridComponent::paint(juce::Graphics& g)
         if (col >= 0 && col < visibleStepsCount)
         {
             g.setColour(juce::Colours::dodgerblue.withAlpha(0.25f));
-            g.fillRect(juce::Rectangle<float>(labelGutterWidth + (float) col * colWidth, gridTop, colWidth, gridHeight));
+            g.fillRect(juce::Rectangle<float>(labelGutterWidth + (float) col * colWidth, gridTop, colWidth, (float) getHeight() - gridTop));
         }
     }
 
@@ -277,6 +292,46 @@ void StepGridComponent::paint(juce::Graphics& g)
                 g.setFont(juce::FontOptions(juce::jmin(11.0f, rowHeight * 0.7f)));
                 g.drawText(noteName(note.pitch), noteRect.reduced(2.0f, 0.0f), juce::Justification::centredLeft);
             }
+
+            // Individual-note selection outline (HUM-off only -- see
+            // setSelectedPitches()) -- only the cursor's own step can have
+            // a selection, so other note blocks never get this outline.
+            if (stepIndex == cursorStep
+                && std::find(selectedPitches.begin(), selectedPitches.end(), note.pitch) != selectedPitches.end())
+            {
+                g.setColour(juce::Colours::white);
+                g.drawRect(noteRect, 2.0f);
+            }
+        }
+    }
+
+    // Clip-end boundary ('b', MidiClip::explicitLengthInSteps): a bright
+    // marker line at the clip's actual end, with everything past it dimmed
+    // -- so a rest sitting BEFORE the line reads as "still inside the
+    // clip" (normal brightness, e.g. an intentional trailing rest before a
+    // Session View loop wraps) rather than being indistinguishable from
+    // "the clip just doesn't go any further here." Drawn after the note
+    // blocks so the dim overlay actually dims any notes past the boundary
+    // too. Nothing drawn at all while unset (0) -- unchanged appearance.
+    if (clip->explicitLengthInSteps > 0)
+    {
+        auto boundaryCol = clip->explicitLengthInSteps - firstVisibleStep;
+        if (boundaryCol < visibleStepsCount)
+        {
+            auto visibleBoundaryCol = juce::jmax(0, boundaryCol);
+            auto x = labelGutterWidth + (float) visibleBoundaryCol * colWidth;
+
+            if (x < (float) getWidth())
+            {
+                g.setColour(juce::Colours::black.withAlpha(0.55f));
+                g.fillRect(juce::Rectangle<float>(x, gridTop, (float) getWidth() - x, (float) getHeight() - gridTop));
+            }
+
+            if (boundaryCol >= 0)
+            {
+                g.setColour(juce::Colours::magenta.withAlpha(0.85f));
+                g.drawLine(x, gridTop, x, (float) getHeight(), 3.0f);
+            }
         }
     }
 
@@ -313,6 +368,43 @@ void StepGridComponent::paint(juce::Graphics& g)
             auto x = labelGutterWidth + (float) col * colWidth;
             g.setColour(juce::Colours::white);
             g.drawVerticalLine((int) x, gridTop, (float) getHeight());
+        }
+    }
+
+    // Velocity lane: a thin strip along the bottom, one bar per note at its
+    // START step (velocity is an onset property, not smeared across the
+    // note's duration -- a tied continuation step is skipped here the same
+    // way the note-block loop above skips it). Bar height is proportional
+    // to velocity (0.0-1.0), anchored to the bottom of the lane. A chord's
+    // notes split that step's column width evenly, side by side.
+    {
+        g.setColour(juce::Colours::white.withAlpha(0.15f));
+        g.drawLine(labelGutterWidth, velocityLaneTop, (float) getWidth(), velocityLaneTop, 1.0f);
+
+        for (int col = 0; col < visibleStepsCount; ++col)
+        {
+            auto stepIndex = firstVisibleStep + col;
+            if (stepIndex < 0 || stepIndex >= (int) clip->steps.size())
+                continue;
+
+            auto& step = clip->steps[(size_t) stepIndex];
+            if (step.notes.empty() || step.tiedFromPrevious)
+                continue;
+
+            auto x = labelGutterWidth + (float) col * colWidth;
+            auto barWidth = colWidth / (float) step.notes.size();
+
+            for (size_t i = 0; i < step.notes.size(); ++i)
+            {
+                auto velocity = juce::jlimit(0.0f, 1.0f, step.notes[i].velocity);
+                auto barHeight = velocityLaneHeight * velocity;
+                auto barRect = juce::Rectangle<float>(x + (float) i * barWidth + 0.5f,
+                                                        velocityLaneTop + velocityLaneHeight - barHeight,
+                                                        barWidth - 1.0f, barHeight);
+
+                g.setColour(juce::Colours::orange.withAlpha(0.85f));
+                g.fillRect(barRect);
+            }
         }
     }
 }

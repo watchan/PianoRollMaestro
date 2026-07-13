@@ -6,6 +6,12 @@ Built with [JUCE](https://juce.com/) (8.0.3), as a Projucer `guiapp` project.
 
 ## Demo
 
+**Day 3** — PC-keyboard chromatic note input (freeing up from needing a physical MIDI keyboard), a dedicated MASCHINE-style 4x4 pad grid on the PC keyboard, and the always-visible live shortcut overlay:
+
+![Demo Day 3: PC-keyboard chromatic input, a MASCHINE-style 4x4 pad grid, and the always-visible shortcut overlay](docs/demo3.gif)
+
+Muted GIF above — [watch with sound on X](https://x.com/watchan/status/2076631645638291658).
+
 **Day 2** — Session View, chord estimate, measure numbers, MIDI controller input, and looping in the piano roll:
 
 ![Demo Day 2: Session View, chord estimate, measure numbers, MIDI controller input, looping](docs/demo2.gif)
@@ -29,8 +35,9 @@ Step input in mainstream DAWs (Logic, Cubase, Ableton) usually forces you to rea
 - **Unified note input** — the physical MIDI keyboard and hum-to-MIDI (mic pitch detection via a self-implemented YIN algorithm) are both pure live monitors feeding the same pending-note slot; `f` commits whichever was heard from most recently, into the step grid. The MIDI keyboard can hold a full chord (hum stays monophonic, one pitch at a time).
 - **Triplet-capable grid** — 12 steps per quarter note, so eighth-note triplets are representable alongside 16th/8th/quarter notes.
 - **Note-aware navigation** — jump between notes, not just grid steps; note-off-aware duration editing; whole-note delete.
-- **Piano-roll view controls** — pitch scroll, independent vertical/horizontal zoom, playback locator, live hum-pitch preview.
+- **Piano-roll view controls** — pitch scroll, independent vertical/horizontal zoom, playback locator, live hum-pitch preview, a velocity lane along the bottom showing each note's velocity as a bar.
 - **Loop/cycle playback** — a project-wide start/end region, set from the edit cursor with a keystroke, that playback wraps around when enabled.
+- **Metronome** — an accented click on every downbeat during playback, toggled with a keystroke.
 - **Persistent shortcut help bar** — the full key map is always on screen, plus a live "what did I just press" indicator.
 - **Audio/MIDI device selection** — with device state persisted across launches.
 - **Chord-progression estimate** — a strip above the piano roll guesses the chord from the notes across all tracks, analyzed every half beat so a mid-bar chord change is actually caught (template matching against major/minor/6/7/maj7/m7/sus2/sus4/dim/aug, with slash/"on-chord" notation like `Dm6/F` when the bass note isn't the chord's own root). Only a genuine 3+ note chord sustained for at least a full beat gets labelled -- single notes, dyads, and fleeting passing harmonies are left blank. Consecutive same-chord segments are merged into one span with the label shown once at the step it starts, pixel-aligned to the piano roll's current pan/zoom.
@@ -53,28 +60,36 @@ The app requests microphone access on first launch (needed for hum-to-MIDI input
 
 ## Keyboard reference
 
-All commands below use the left hand only; the right hand stays on the MIDI keyboard.
+All commands below use the left hand only; the right hand stays on the MIDI keyboard -- except the virtual keyboard (`Ctrl+...`) and the drum-pad grid (`Ctrl+Shift+...`), both of which are note-PERFORMANCE inputs (substitutes for a physical MIDI keyboard/drum pads) and are meant to be played with the right hand, unconstrained by the left-hand-only rule, while the left hand stays free for editing commands.
 
 | Key | Action |
 |---|---|
 | `f` | Ableton-Live-style: places the last-heard note (from the MIDI keyboard or hum, whichever's pending) into the step grid, otherwise moves to the next note (or a duration-step, on a rest) |
 | `d` | Moves to the previous note (or a duration-step, on a rest) -- unless the cursor is on a note that shares a pitch with the currently pending note(s) (last heard from hum/MIDI), in which case it removes just the matching pitch(es) from that chord (other notes in the chord stay); if that empties the chord, the whole note is cleared |
-| `a` | Clear the note under the cursor (whole note, including its tied continuation steps) -- or the current step if it's a plain rest. Also discards whatever's currently pending (hum or MIDI) so a stray/misdetected pitch can be cancelled without committing or waiting for a new one to overwrite it |
+| `a` | Clears whichever note(s) are currently selected (see `3`/`e` above -- with HUM on, or nothing narrowed, that's the whole chord/note, including its tied continuation steps) -- or the current step if it's a plain rest. Also discards whatever's currently pending (hum or MIDI) so a stray/misdetected pitch can be cancelled without committing or waiting for a new one to overwrite it |
 | `g` | Delete — removes the whole note if the cursor is on one, cursor lands at its start |
 | `t` | Tie — extend the note at/before the cursor by the current duration preset |
 | `z` / `x` | Octave shift (live input preview) |
-| `3` / `e` | Nudge the pending HUM-detected pitch by a semitone, up/down (correction for pitch-detector drift; doesn't affect MIDI input) |
-| `Option+3` / `Option+E` (or `Option+R`) | Nudge the note at the cursor by a semitone, up/down |
+| `3` / `e` | While HUM is on: nudge the pending HUM-detected pitch by a semitone, up/down (correction for pitch-detector drift; doesn't affect MIDI input). While HUM is off: select an individual note within the chord at the cursor -- landing on a chord selects all of its notes; the first `3`/`e` press narrows to just the highest note, then `e` moves the selection down and `3` moves it up (wrapping around at the top/bottom). `Option+3/E` and `a` (below) act on whatever's currently selected instead of the whole chord |
+| `Cmd+Shift+W` / `Cmd+Shift+E` | HUM off only: same up/down note-selection move as `3`/`e`, but *adds* to the selection instead of replacing it, for selecting more than one note out of a chord |
+| `Option+T` / `Option+G` | Nudge whichever note(s) are currently selected (see `3`/`e` above) by a semitone, up/down -- with HUM on, or nothing narrowed, that's the whole chord |
 | `Shift+Option+3` (or `Shift+Option+W`) / `Shift+Option+E` (or `Shift+Option+R`) | Nudge the note at the cursor by an octave, up/down |
 | `Option+Z` / `Option+X` | Tempo down/up (1 BPM) |
 | `v` | Toggle hum-to-MIDI listening on/off -- 'f'/'d' only actually write/delete notes while this is ON, otherwise they're pure navigation |
 | `c` | Toggle loop/cycle playback on/off |
 | `Shift+C` / `Cmd+C` | Drop the loop start / end marker at the edit cursor's current position |
+| `w` | Toggle the metronome click on/off during playback -- accented on the downbeat of each 4/4 bar |
+| `b` | Mark the current track's clip as ending at the edit cursor ("Bound") -- lets a trailing rest be kept intentionally instead of always being trimmed away, and Session View slot loops run out to this point instead of snapping to the last note. Shown as a magenta boundary line with everything past it dimmed. Press at step 0 to clear it back to automatic (ends right after the last note) |
 | `Shift+Z` / `Shift+X` | Cycle the commit duration preset (16th / 8th-triplet / 8th / quarter) |
 | `Shift+D` / `Shift+F` | Jump the locator back/forward by one measure (4/4 assumed) |
 | `Shift+3` (or `Shift+W`) / `Shift+E` | Switch to previous/next track |
 | `Space` | Advance the locator by the current duration preset -- pure navigation, doesn't touch step content |
 | `Tab` | Play / stop |
+| `Ctrl+<key>` (hold) | Virtual keyboard -- a substitute for a physical MIDI keyboard, feeding the exact same live-preview/chord/StepRecord path. Chromatic, isomorphic "fourths" layout: bottom row `B N M , . /` = C C# D D# E F, and each row above (`G H J K L ; '`, `T Y U I O P [ ]`, `5 6 7 8 9 0 - =`) starts a perfect fourth higher, overlapping the row below by one note -- so a chord/scale shape is playable the same way anywhere on the grid. Notes sound for as long as the key is held (like a real key), and releasing `Ctrl` force-stops anything still sounding from it |
+| `Ctrl+Z` / `Ctrl+X` | Transpose the virtual keyboard down/up by a semitone (does not affect the drum grid) |
+| `Ctrl+F` (hold) | Sustain, virtual keyboard only -- while held, releasing a note key keeps it ringing instead of cutting it off, the same as a real sustain pedal. Everything still sustaining gets cut off the moment `Ctrl+F` itself is released. Pressing an already-sustaining key again retrikes it (fresh note-on) and takes it off the sustain hold |
+| `Ctrl+Shift+Z` / `Ctrl+Shift+X` | Decrease/increase the fixed velocity used by both PC-keyboard note sources (the virtual keyboard and the drum grid) -- neither can report a real physical press-force the way a MIDI keyboard does, so this is the only way to control it. Shown as "VEL: n%" in the transport bar |
+| `Ctrl+Shift+<key>` (hold) | Drum-pad grid, separate from the virtual keyboard above (even though several keys are physically shared between the two -- holding Shift switches which one responds), right-hand like the melodic keyboard. Straight chromatic, 4 rows x 4 columns, no octave overlap between rows: `M < > ?` (i.e. the physical `M , . /` keys, shifted) = C2-D#2, `J K L :` (physical `J K L ;`) = E2-G2, `U I O P` = G#2-B2, `& * ( )` (physical `7 8 9 0`, shifted) = C3-D#3 -- 16 pads spanning MIDI 48-63 (octave numbers in this app's own convention, where MIDI 60 = "C3"). (`Cmd` was tried as the second modifier instead of `Shift` but had to be abandoned -- `Cmd+M` is unconditionally reserved by macOS to minimize the window, at the OS level, before the app ever sees the keystroke.) |
 | `Cmd+S` / `Cmd+Shift+S` | Save / Save As |
 | `Cmd+O` | Open |
 | `Cmd+N` | New project |
@@ -82,6 +97,7 @@ All commands below use the left hand only; the right hand stays on the MIDI keyb
 | `Cmd+Y` | Open instrument panel |
 | `Cmd+P` | Show/hide the current track's plugin editor window -- each track remembers its own window and visibility, so switching tracks auto-hides/shows accordingly; loading a new instrument shows its editor right away |
 | `Cmd+,` | Open Audio/MIDI settings |
+| `Cmd+K` | Show/hide a live keyboard-shortcut overlay window (bottom-right corner) -- a QWERTY-shaped grid where every key's label shows exactly what pressing it right now would do, updating instantly as you hold Shift/Option/Cmd/Ctrl and as the mode (Piano Roll/Session View) or HUM state changes. The most recently pressed key is highlighted in yellow (stays lit until the next keypress). Never steals keyboard focus, so it can stay open while you keep working in the main window |
 | `Cmd+G` / `Cmd+B` | Switch to previous/next track |
 | `Cmd+F` / `Cmd+D` | Zoom the piano-roll horizontally in/out |
 | `Cmd+3` / `Cmd+E` | Zoom the piano-roll vertically out/in |
@@ -107,6 +123,8 @@ Rows = tracks, columns = clip slots -- each track's clips laid out left-to-right
 | `x` | Launch the slot at the cursor on the current track (no-op if it's empty) |
 | `g` | Capture the current track's piano-roll clip into the slot at the cursor (grows the track's slot list if needed), and live-links the editor to that slot (see below) |
 | `t` | Load the slot at the cursor into the piano-roll editor, live-link it the same way, and switch back to Piano Roll view -- if that slot is empty, creates a fresh clip there first, so there's always something to start writing into |
+| `a` | Delete the clip at the cursor (clears it back to empty). No-op on an already-empty slot. Stops the track first if it was playing that slot, and unlinks it from the piano-roll editor if it was live-linked there |
+| `b` | Duplicate the clip at the cursor into the next slot (overwriting whatever was already there), then moves the cursor onto the new copy -- repeated presses chain copies rightward. No-op on an empty slot (nothing to duplicate) |
 
 A slot cell is filled grey once it has a captured clip, bright green while it's the track's currently-launched/playing slot, and outlined in blue at the cursor position. Launching is instant (no bar/loop-boundary quantization in this version) and only affects the track it's launched on -- other tracks keep playing whatever they already were. Whole-column ("song section") launching isn't implemented yet.
 

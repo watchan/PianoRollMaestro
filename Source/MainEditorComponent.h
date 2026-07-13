@@ -5,6 +5,7 @@
 #include "ChordEstimateBarComponent.h"
 #include "HumInputListener.h"
 #include "InstrumentPanelWindow.h"
+#include "KeyboardOverlayWindow.h"
 #include "MicLevelMeterComponent.h"
 #include "MidiInputRouter.h"
 #include "PlaybackEngine.h"
@@ -54,6 +55,30 @@ private:
 
     void refreshMidiDeviceList();
     void midiDeviceSelected();
+
+    // Substitute MIDI keyboard: Ctrl + a mapped key plays a note for as long
+    // as that key is held (Ctrl+Shift + a mapped key instead triggers the
+    // 4x4 drum-pad grid), same as a real MIDI keyboard -- see
+    // virtualKeyboardKeyMap()/virtualDrumKeyMap() in the .cpp. keyPressed()
+    // only fires once per physical press and has no matching "key up"
+    // callback, so this is polled from timerCallback() (~30Hz) via
+    // juce::KeyPress::isKeyCurrentlyDown() instead, diffing against
+    // heldVirtualKeyboardKeys/heldVirtualDrumKeys to find press/release
+    // transitions and feeding them through midiInputRouter.injectNote() --
+    // the same shared entry point real MIDI input uses, so chords and live
+    // preview all just work without any separate handling.
+    void pollVirtualKeyboardInput();
+    // Ctrl+Z / Ctrl+X, semitone steps -- shifts virtualKeyboardTransposeSemitones,
+    // applied only to the melodic map (not the drum grid, which is meant to
+    // hit fixed instrument pitches).
+    void adjustVirtualKeyboardTranspose(int deltaSemitones);
+    // Ctrl+Shift+Z / Ctrl+Shift+X -- both keys are unmapped in
+    // virtualDrumKeyMap() (see its declaration), so this doesn't collide
+    // with any actual drum pad. Adjusts virtualKeyboardVelocity, the fixed
+    // velocity every PC-keyboard note source (the melodic keyboard AND the
+    // drum grid) uses, since neither can report a real physical
+    // press-force the way a MIDI keyboard's velocity byte does.
+    void adjustVirtualKeyboardVelocity(float delta);
     // Hum is inherently monophonic (one pitch at a time from the detector),
     // so each new pitch REPLACES pendingChord with a single note.
     void handleHumNoteChange(int noteNumber, float velocity, bool isOn);
@@ -71,6 +96,11 @@ private:
     void togglePlayback();
     void openInstrumentPanel();
     void openAudioMidiSettings();
+    // Cmd+K: shows/hides the live keyboard-shortcut cheat-sheet window
+    // (KeyboardOverlayWindow) -- created lazily on first toggle, then just
+    // setVisible() flipped after that (unlike the plugin editor windows,
+    // there's only ever one of these, and it never needs recreating).
+    void toggleKeyboardOverlay();
     // Show/hide the current track's plugin editor window (Cmd+P). Each
     // track keeps its own window + a remembered "should this be visible"
     // flag (pluginEditorWindowsByTrack/pluginEditorDesiredVisible below),
@@ -128,6 +158,29 @@ private:
     // owns the note data first. Auditions the new pitch with a brief
     // noteOn/noteOff so the change is audible immediately. No-op on a rest.
     void adjustNotePitch(int deltaSemitones);
+    // HUM-off only ('3'/'e' unmodified, or Cmd+Shift+W/Cmd+Shift+E(R) to
+    // extend): narrows/moves the single-note selection within the chord at
+    // the cursor. delta -1 = up ('3'), +1 = down ('e'). First press from a
+    // fresh/stale state always lands on the highest pitch, regardless of
+    // delta's direction; subsequent presses step by delta with circular
+    // wraparound. extend=true adds the new focus pitch to
+    // noteSelectionPitches instead of replacing it, building a multi-select.
+    // See noteSelectionAnchorStep's declaration for how this interacts with
+    // cursor movement, and effectiveSelectedPitches() for how adjustNotePitch()/
+    // clearCurrentStep() consume the result.
+    void navigateNoteSelection(int delta, bool extend);
+    // The pitches an edit RIGHT NOW would affect: noteSelectionPitches if
+    // noteSelectionAnchorStep still matches cursorStepIndex (intersected
+    // against the chord's current pitches, defensively, in case it changed
+    // underneath), otherwise every pitch in the chord at the cursor (the
+    // "just arrived on a chord -> everything's selected" ground state --
+    // this fallback is what makes narrowing entirely optional: nothing
+    // calls this after a stale/absent selection, it just naturally reports
+    // "the whole chord" until navigateNoteSelection() is used). Empty on a
+    // rest. Used by adjustNotePitch()/clearCurrentStep()/auditionNoteAtCursor()
+    // so their default behavior (nothing narrowed) is byte-for-byte
+    // identical to before this feature existed.
+    std::vector<int> effectiveSelectedPitches() const;
     // Plays a brief noteOn/noteOff for whatever note (if any) is under the
     // cursor right now -- called after every cursor move so navigating with
     // d/f (or auto-advance from other commands) audibly "scrubs" through
@@ -151,6 +204,20 @@ private:
     void toggleLoopEnabled();
     void setLoopStartHere();
     void setLoopEndHere();
+
+    // Metronome click during playback (project-wide, not undo-tracked, same
+    // reasoning as the loop region above). 'w' toggles it -- one of the
+    // only plain left-hand letters still free by the time this was added.
+    // PlaybackEngine reads project.metronomeEnabled directly and renders
+    // the click itself (see PlaybackEngine::renderMetronomeClicks()).
+    void toggleMetronome();
+
+    // Marks the current track's clip as ending at the edit cursor (plain
+    // 'b', "Bound") -- see MidiClip::explicitLengthInSteps's declaration
+    // for what this changes (trimming, playback/loop length, the piano-
+    // roll's boundary marker). Piano-roll only (Session View has no step
+    // cursor). Not undo-tracked, same reasoning as the loop markers below.
+    void setClipEndHere();
 
     // Session View: the app's starting view (see currentViewMode's default)
     // and the only way into Piano Roll -- a grid of independently-
@@ -185,6 +252,18 @@ private:
     // nothing -- 't' on an empty slot always gets you into the editor with
     // something to write into.
     void loadSlotAtCursorToEditor();
+    // Session View only ('a'): clears sceneClips[sessionCursorSlotIndex]
+    // back to an empty MidiClip. No-op if that slot doesn't exist yet.
+    // Stops the track first if it was currently playing that slot, and
+    // unlinks editingSlotIndex if it pointed there -- otherwise the next
+    // edit's live-link sync (refreshChildViews()) would just copy the
+    // piano-roll buffer straight back into the slot, undoing the delete.
+    void deleteClipAtCursor();
+    // Session View only ('b'): copies sceneClips[sessionCursorSlotIndex]
+    // into the NEXT slot (sessionCursorSlotIndex + 1, growing sceneClips to
+    // fit, overwriting whatever was already there), then moves the cursor
+    // onto the new copy. No-op if the cursor's current slot doesn't exist.
+    void duplicateClipAtCursor();
 
     // Flips Track::includeInChordEstimate on the current track (Cmd+A) --
     // lets e.g. a drum/percussion track be excluded from ChordEstimator's
@@ -306,6 +385,32 @@ private:
     juce::ComboBox midiDeviceBox;
     juce::Array<juce::MidiDeviceInfo> availableMidiDevices;
 
+    // Keys currently down for the virtual keyboard / drum grid, as of the
+    // last pollVirtualKeyboardInput() poll -- diffed against each new poll
+    // to find press/release transitions. Each entry remembers the pitch
+    // that key's note-on actually used, so note-off targets the same pitch
+    // even if virtualKeyboardTransposeSemitones changes mid-hold. Empty
+    // whenever Ctrl (or Ctrl+Shift, for the drum map) isn't held.
+    std::vector<std::pair<char, int>> heldVirtualKeyboardKeys;
+    std::vector<std::pair<char, int>> heldVirtualDrumKeys;
+
+    // Ctrl+F ("Sustain", melodic keyboard only) -- notes whose key released
+    // while sustain was held, so they're still sounding even though they're
+    // no longer in heldVirtualKeyboardKeys. Flushed (note-off for
+    // everything here) the moment sustain itself releases. See
+    // pollVirtualKeyboardInput()'s pollOneMap lambda. sustainedVirtualDrumNotes
+    // exists only so pollOneMap has a vector to bind to for the drum call,
+    // which always passes sustain=false and so never actually uses it.
+    std::vector<std::pair<char, int>> sustainedVirtualKeyboardNotes;
+    std::vector<std::pair<char, int>> sustainedVirtualDrumNotes;
+    bool wasSustainKeyDown = false; // rising-edge detection for lastPressedKeyCode, see pollVirtualKeyboardInput()
+
+    // Ctrl+Z / Ctrl+X, in semitones -- see adjustVirtualKeyboardTranspose().
+    int virtualKeyboardTransposeSemitones = 0;
+
+    // Ctrl+Shift+Z / Ctrl+Shift+X, 0.0-1.0 -- see adjustVirtualKeyboardVelocity().
+    float virtualKeyboardVelocity = 0.8f;
+
     juce::TextButton playButton{ "Play" };
     juce::TextButton instrumentButton{ "Instrument" };
     juce::TextButton audioSettingsButton{ "Audio/MIDI" };
@@ -313,6 +418,7 @@ private:
     PluginHost pluginHost;
 
     std::unique_ptr<InstrumentPanelWindow> instrumentPanelWindow;
+    std::unique_ptr<KeyboardOverlayWindow> keyboardOverlayWindow;
     // Per-track plugin editor windows, created lazily (only once a track's
     // "show editor" is actually requested) and kept alive-but-hidden when
     // you switch away, so returning to a track shows the same window state
@@ -353,6 +459,23 @@ private:
     int cursorTrackIndex = 0;
     int cursorStepIndex = 0;
     int octaveShiftOctaves = 0;
+
+    // HUM-off individual-note selection within the chord at the cursor --
+    // see navigateNoteSelection()/effectiveSelectedPitches(). Not undo-
+    // tracked (UI focus state, not note data). noteSelectionAnchorStep is
+    // the cursorStepIndex this selection was computed for; a mismatch means
+    // "stale," and effectiveSelectedPitches() falls back to "every pitch in
+    // the chord at the (possibly new) cursor" without any explicit reset
+    // needed on cursor-movement code paths.
+    int noteSelectionAnchorStep = -1;
+    int noteSelectionFocusPitch = -1; // -1 = not narrowed yet (whole-chord state)
+    std::vector<int> noteSelectionPitches;
+
+    // Raw key code of whatever was last dispatched through keyPressed()'s
+    // trigger() lambda -- read by KeyboardOverlayComponent (via a getter
+    // passed into toggleKeyboardOverlay()) to highlight that key. 0 = none
+    // yet.
+    int lastPressedKeyCode = 0;
 
     // Session View -- see toggleViewMode()'s declaration above. Starts here
     // (not PianoRoll): the piano roll always edits a specific, slot-linked

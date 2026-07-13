@@ -36,7 +36,22 @@ public:
     int stepsPerQuarterNote = 12;
     std::vector<Step> steps;
 
-    int totalLengthInSteps() const;
+    // 0 = unset (auto -- the clip ends right after its last note;
+    // MainEditorComponent::trimTrailingEmptySteps() keeps trimming trailing
+    // rests down to that point, same as before this field existed). >0 =
+    // explicitly "the clip is this many steps long," even if that runs past
+    // the last note -- trailing rests up to this point are preserved
+    // instead of trimmed, and playback/looping (Session View slots) run out
+    // to here instead of snapping tight to the last note. Set via 'b' (Set
+    // Clip End) at the edit cursor -- MainEditorComponent::setClipEndHere().
+    int explicitLengthInSteps = 0;
+
+    // The single source of truth for "how long is this clip": returns
+    // explicitLengthInSteps if set, otherwise steps.size(). Used by
+    // PlaybackEngine::scheduleUpTo()'s loop-wrap/stop logic, StepGridComponent's
+    // clip-end boundary marker, and ChordEstimator's analysis range.
+    int effectiveLengthInSteps() const;
+
     double stepDurationSeconds(double bpm) const;
 
     juce::ValueTree toValueTree() const;
@@ -80,13 +95,11 @@ public:
     int editingSlotIndex = -1;
 
     // Whether this track's notes are pooled into ChordEstimator's analysis
-    // (Source/ChordEstimator.cpp). Defaults to true so pre-existing projects
-    // and freshly-added tracks behave exactly like before this flag existed
-    // (every track contributes). Toggled per-track with Cmd+A so e.g. a
-    // drum/percussion track (whose "pitches" would just add noise to the
-    // chord guess) can be excluded, with multiple tracks independently
-    // includable/excludable at once.
-    bool includeInChordEstimate = true;
+    // (Source/ChordEstimator.cpp). Defaults to false -- a new track opts IN
+    // with Cmd+A rather than opting out, so adding e.g. a drum/percussion
+    // track doesn't silently start feeding noise into the chord guess.
+    // Multiple tracks are independently includable/excludable at once.
+    bool includeInChordEstimate = false;
 
     // Instrument assignment (Milestone 2). Data only -- the live
     // juce::AudioPluginInstance lives in PlaybackEngine, not here.
@@ -115,6 +128,11 @@ public:
     int loopStartStep = 0;
     int loopEndStep = 0;
     bool loopEnabled = false;
+
+    // Audible click on every quarter-note beat during playback (accented on
+    // the downbeat of each 4/4 bar) -- project-wide like the loop region,
+    // toggled with 'w'. See PlaybackEngine::renderMetronomeClicks().
+    bool metronomeEnabled = false;
 
     juce::ValueTree toValueTree() const;
     void loadFromValueTree(const juce::ValueTree& tree);

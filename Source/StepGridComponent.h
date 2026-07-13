@@ -52,6 +52,13 @@ public:
     // visible either way without being mistaken for an active loop.
     void setLoopRegion(int startStepIn, int endStepIn, bool enabledIn);
 
+    // Individual-note selection within the chord at cursorStep (HUM-off
+    // only -- see MainEditorComponent::effectiveSelectedPitches()). Drawn
+    // as a bright outline on top of the normal note-block fill, for
+    // whichever pitch(es) at cursorStep are in this list. Empty (the
+    // default, and always while HUM is on) draws no outline at all.
+    void setSelectedPitches(const std::vector<int>& pitches);
+
     // Exposed so ChordEstimateBarComponent can align its bar labels to
     // exactly the same horizontal window/column width this view is
     // currently showing -- see paint()'s firstVisibleStep/colWidth math,
@@ -74,6 +81,8 @@ private:
     int loopEndStep = 0;
     bool loopRegionEnabled = false;
 
+    std::vector<int> selectedPitches;
+
     // Pans via scrollPitchView(); default centres the same C3-C6 range the
     // view used to be hard-limited to.
     int lowestVisiblePitch = 48;
@@ -84,4 +93,5 @@ private:
 
     static constexpr float labelGutterWidth = 34.0f; // left-edge pitch-name axis
     static constexpr float measureLabelHeight = 16.0f; // top strip showing measure numbers
+    static constexpr float velocityLaneHeight = 28.0f; // bottom strip showing per-note velocity bars
 };

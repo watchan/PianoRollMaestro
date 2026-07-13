@@ -103,10 +103,25 @@ private:
     // playback back to the loop start.
     void sendAllNotesOffForLoop();
 
+    // Synthesizes metronome clicks (project->metronomeEnabled) directly into
+    // audioOut for [blockStartSample, blockEndSample) -- accented (higher
+    // pitch) on the downbeat of each 4/4 bar. A simple decaying sine blip,
+    // fully rendered within whatever block it starts in (clicks are short
+    // enough, ~15ms, that block-boundary truncation is inaudible in
+    // practice) rather than tracked as cross-block state like note
+    // scheduling is. nextClickSample/clicksSinceStart reset alongside
+    // blockStartSample/trackCursors (reset(), and the loop-wrap block in
+    // renderNextBlock()) so the downbeat accent stays aligned with wherever
+    // the transport actually starts/loops from.
+    void renderMetronomeClicks(juce::AudioBuffer<float>& audioOut, int64_t blockEndSample);
+
     double sampleRate = 44100.0;
     int blockSize = 512;
     int64_t blockStartSample = 0;
     bool playing = false;
+
+    int64_t nextClickSample = 0;
+    int64_t clicksSinceStart = 0;
 
     const Project* project = nullptr;
     std::vector<ScheduledEvent> pendingEvents;

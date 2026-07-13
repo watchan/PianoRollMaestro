@@ -1,4 +1,5 @@
 #include "TransportBarComponent.h"
+#include <cmath>
 
 void TransportBarComponent::paint(juce::Graphics& g)
 {
@@ -45,10 +46,29 @@ void TransportBarComponent::paint(juce::Graphics& g)
     g.drawText(juce::String("LOOP ") + (loopEnabled ? "ON" : "OFF"), loopBadge, juce::Justification::centred);
     bounds.removeFromLeft(12);
 
+    // METRONOME ON/OFF badge -- same treatment as HUM/LOOP.
+    auto metronomeBadge = bounds.removeFromLeft(130).reduced(0, 7);
+    if (metronomeEnabled)
+    {
+        g.setColour(juce::Colours::cornflowerblue);
+        g.fillRoundedRectangle(metronomeBadge.toFloat(), 4.0f);
+        g.setColour(juce::Colours::black);
+    }
+    else
+    {
+        g.setColour(juce::Colours::grey.withAlpha(0.5f));
+        g.drawRoundedRectangle(metronomeBadge.toFloat(), 4.0f, 1.0f);
+        g.setColour(juce::Colours::grey);
+    }
+    g.setFont(juce::FontOptions(13.0f, juce::Font::bold));
+    g.drawText(juce::String("METRONOME ") + (metronomeEnabled ? "ON" : "OFF"), metronomeBadge, juce::Justification::centred);
+    bounds.removeFromLeft(12);
+
     juce::String text;
     text << (playing ? "> PLAYING" : "|| STOPPED")
          << "    BPM " << juce::String(bpmValue, 0)
-         << "    OCT: " << (octaveShift >= 0 ? "+" : "") << octaveShift;
+         << "    OCT: " << (octaveShift >= 0 ? "+" : "") << octaveShift
+         << "    VEL: " << (int) std::round(virtualKeyboardVelocity * 100.0f) << "%";
 
     if (!pendingNotePitches.empty())
     {

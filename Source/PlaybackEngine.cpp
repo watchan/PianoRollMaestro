@@ -57,6 +57,8 @@ void PlaybackEngine::prepare(double sampleRateIn, int blockSizeIn)
 void PlaybackEngine::reset()
 {
     blockStartSample = 0;
+    nextClickSample = 0;
+    clicksSinceStart = 0;
     pendingEvents.clear();
     trackCursors.clear();
 
@@ -141,6 +143,43 @@ void PlaybackEngine::sendAllNotesOffForLoop()
 {
     for (int t = 0; t < (int) trackAudioStates.size(); ++t)
         sendAllNotesOffForTrack(t);
+}
+
+void PlaybackEngine::renderMetronomeClicks(juce::AudioBuffer<float>& audioOut, int64_t blockEndSample)
+{
+    if (project == nullptr || !project->metronomeEnabled || project->tracks.empty())
+        return;
+
+    // Tempo/resolution is project-wide -- any track's clip works, same
+    // convention the loop-wrap block above already uses.
+    auto& clip = project->tracks[0].clip;
+    auto quarterNoteSamples = (int64_t) std::round(clip.stepDurationSeconds(project->tempoBpm) * sampleRate * clip.stepsPerQuarterNote);
+    if (quarterNoteSamples <= 0)
+        return;
+
+    while (nextClickSample < blockEndSample)
+    {
+        if (nextClickSample >= blockStartSample)
+        {
+            auto isAccent = (clicksSinceStart % 4) == 0; // 4/4 assumed, same as everywhere else in this app
+            auto startOffset = (int) (nextClickSample - blockStartSample);
+            auto clickLengthSamples = juce::jmin((int) (blockEndSample - nextClickSample), (int) (0.015 * sampleRate));
+            auto freq = isAccent ? 1500.0 : 1000.0;
+
+            for (int i = 0; i < clickLengthSamples; ++i)
+            {
+                auto t = (double) i / sampleRate;
+                auto envelope = std::exp(t * -80.0); // fast decay, short percussive blip
+                auto sample = (float) (std::sin(2.0 * juce::MathConstants<double>::pi * freq * t) * envelope * 0.5);
+
+                for (int ch = 0; ch < audioOut.getNumChannels(); ++ch)
+                    audioOut.addSample(ch, startOffset + i, sample);
+            }
+        }
+
+        nextClickSample += quarterNoteSamples;
+        ++clicksSinceStart;
+    }
 }
 
 void PlaybackEngine::retriggerTrack(int trackIndex)
@@ -292,34 +331,47 @@ void PlaybackEngine::scheduleUpTo(int64_t blockEndSample)
         // in renderNextBlock() below), matching pre-Session-View behavior.
         auto loopsForever = track.playingSlotIndex >= 0;
 
+        // The clip's real length -- explicitLengthInSteps if the user set
+        // one (see MidiClip's declaration), otherwise clip.steps.size(),
+        // exactly matching the old unconditional steps.size() check. When
+        // an explicit length runs past the stored steps array, indices in
+        // [steps.size(), effectiveLength) are implicit trailing rests (the
+        // guard below skips scheduling anything for them).
+        auto effectiveLength = clip.effectiveLengthInSteps();
+
         while (cursor.nextStepSample < blockEndSample)
         {
-            if (cursor.nextStepIndex >= (int) clip.steps.size())
+            if (cursor.nextStepIndex >= effectiveLength)
             {
-                if (!loopsForever || clip.steps.empty())
+                if (!loopsForever || effectiveLength <= 0)
                     break; // reached the end -- stop scheduling this track (or nothing to loop at all)
                 cursor.nextStepIndex = 0; // wrap back to the start of this clip and keep going
             }
 
-            auto& step = clip.steps[(size_t) cursor.nextStepIndex];
-
-            if (!step.tiedFromPrevious)
+            if (cursor.nextStepIndex < (int) clip.steps.size())
             {
-                int64_t totalSamples = stepSamples * step.lengthInSteps;
+                auto& step = clip.steps[(size_t) cursor.nextStepIndex];
 
-                auto lookahead = cursor.nextStepIndex + 1;
-                while (lookahead < (int) clip.steps.size() && clip.steps[(size_t) lookahead].tiedFromPrevious)
+                if (!step.tiedFromPrevious)
                 {
-                    totalSamples += stepSamples * clip.steps[(size_t) lookahead].lengthInSteps;
-                    ++lookahead;
-                }
+                    int64_t totalSamples = stepSamples * step.lengthInSteps;
 
-                for (auto& note : step.notes)
-                {
-                    pendingEvents.push_back({ cursor.nextStepSample, (int) t, note.pitch, true, note.velocity });
-                    pendingEvents.push_back({ cursor.nextStepSample + totalSamples, (int) t, note.pitch, false, 0.0f });
+                    auto lookahead = cursor.nextStepIndex + 1;
+                    while (lookahead < (int) clip.steps.size() && clip.steps[(size_t) lookahead].tiedFromPrevious)
+                    {
+                        totalSamples += stepSamples * clip.steps[(size_t) lookahead].lengthInSteps;
+                        ++lookahead;
+                    }
+
+                    for (auto& note : step.notes)
+                    {
+                        pendingEvents.push_back({ cursor.nextStepSample, (int) t, note.pitch, true, note.velocity });
+                        pendingEvents.push_back({ cursor.nextStepSample + totalSamples, (int) t, note.pitch, false, 0.0f });
+                    }
                 }
             }
+            // else: within effectiveLength but past the stored steps array
+            // -- an implicit trailing rest, nothing to schedule this step.
 
             cursor.nextStepSample += stepSamples;
             ++cursor.nextStepIndex;
@@ -376,6 +428,8 @@ void PlaybackEngine::renderNextBlock(juce::AudioBuffer<float>& audioOut, juce::M
                 sendAllNotesOffForLoop();
                 pendingEvents.clear();
                 blockStartSample = stepSamples * (int64_t) project->loopStartStep;
+                nextClickSample = blockStartSample;
+                clicksSinceStart = 0;
 
                 for (auto& cursor : trackCursors)
                     cursor = TrackCursor{ project->loopStartStep, blockStartSample };
@@ -438,6 +492,9 @@ void PlaybackEngine::renderNextBlock(juce::AudioBuffer<float>& audioOut, juce::M
         }
     }
 
+    if (playing)
+        renderMetronomeClicks(audioOut, blockEndSample);
+
     // Master safety net: soft-clip (tanh) rather than hard digital clipping,
     // in case several tracks still sum above 0dBFS despite the attenuation
     // above -- smooths the overload instead of harsh crackling distortion.
@@ -472,7 +529,7 @@ void PlaybackEngine::renderNextBlock(juce::AudioBuffer<float>& audioOut, juce::M
                     // it never counts as "done" the way a linear main-clip
                     // playthrough does, or the transport would auto-stop
                     // out from under an actively-looping clip.
-                    if (!track.sceneClips[(size_t) track.playingSlotIndex].steps.empty())
+                    if (track.sceneClips[(size_t) track.playingSlotIndex].effectiveLengthInSteps() > 0)
                         allTracksDone = false;
                     continue;
                 }
@@ -480,7 +537,7 @@ void PlaybackEngine::renderNextBlock(juce::AudioBuffer<float>& audioOut, juce::M
                 if (track.playingSlotIndex == -2)
                     continue; // explicitly stopped -- contributes nothing either way
 
-                if (trackCursors[t].nextStepIndex < (int) track.clip.steps.size())
+                if (trackCursors[t].nextStepIndex < track.clip.effectiveLengthInSteps())
                     allTracksDone = false;
             }
 
