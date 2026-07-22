@@ -7,62 +7,67 @@
 // mapping to compute its labels) -- kept in one place so the two can never
 // silently drift apart.
 
-// Ctrl + one of these keys is a substitute MIDI keyboard, played with
-// the right hand (this is note PERFORMANCE, not an editing command, so
-// the left-hand-only rule the rest of this app follows doesn't apply
-// here -- a real MIDI keyboard was never left-hand-only either). Value
-// = semitones above 'B' (which maps to MIDI 60 -- "C3" in this app's
-// own note-name convention, see StepGridComponent.cpp's noteName()/
-// getMidiNoteName(..., 3), NOT the also-common "C4 = 60" convention).
-// Each row is chromatic left-to-right; each row's own starting key (B,
-// G, T, 5) is a perfect fourth (5 semitones) above the row below it, so
-// adjacent rows deliberately overlap by one note -- an isomorphic
+// One of these keys, held with NO modifier, is a substitute MIDI keyboard,
+// played with the right hand (this is note PERFORMANCE, not an editing
+// command, so the left-hand-only rule the rest of this app follows doesn't
+// apply here -- a real MIDI keyboard was never left-hand-only either).
+// Always active -- there's no held-modifier gate anymore (previously
+// Ctrl); Enter toggles between this map and the drum grid below instead
+// (see MainEditorComponent::toggleDrumGridMode()). Value = semitones above
+// 'N' (which maps to MIDI 60 -- "C3" in this app's own note-name
+// convention, see StepGridComponent.cpp's noteName()/getMidiNoteName(...,
+// 3), NOT the also-common "C4 = 60" convention).
+//
+// Each row is chromatic left-to-right; each row's own starting key is a
+// perfect fourth (5 semitones) above the row below it -- an isomorphic
 // "fourths" layout (as used on several grid MIDI controllers), where a
-// chord or scale shape stays the same shape no matter where on the grid
-// you play it. Requested layout: "クロマチックで...BとGの間は四度にする".
+// chord or scale shape stays roughly the same shape no matter where on the
+// grid you play it. B/G/T/5 (each row's original starting key) are
+// deliberately NOT included here -- they're needed as plain-key editing
+// shortcuts (Set Clip End, Jump Back 1 Bar, Tie, Toggle Triplet Quantize)
+// now that this map has no modifier of its own to disambiguate against
+// them, so every row starts one key later than it used to
+// ("クロマチック入力の開始をNにする。B,G,T,5は他のショートカットに当てる").
 inline const std::map<char, int>& virtualKeyboardKeyMap()
 {
     static const std::map<char, int> map = {
-        { 'B', 0 }, { 'N', 1 }, { 'M', 2 }, { ',', 3 }, { '.', 4 }, { '/', 5 },
-        { 'G', 5 }, { 'H', 6 }, { 'J', 7 }, { 'K', 8 }, { 'L', 9 }, { ';', 10 }, { '\'', 11 },
-        { 'T', 10 }, { 'Y', 11 }, { 'U', 12 }, { 'I', 13 }, { 'O', 14 }, { 'P', 15 }, { '[', 16 }, { ']', 17 },
-        { '5', 15 }, { '6', 16 }, { '7', 17 }, { '8', 18 }, { '9', 19 }, { '0', 20 }, { '-', 21 }, { '=', 22 },
+        { 'N', 0 }, { 'M', 1 }, { ',', 2 }, { '.', 3 }, { '/', 4 },
+        { 'H', 5 }, { 'J', 6 }, { 'K', 7 }, { 'L', 8 }, { ';', 9 }, { '\'', 10 },
+        { 'Y', 10 }, { 'U', 11 }, { 'I', 12 }, { 'O', 13 }, { 'P', 14 }, { '[', 15 }, { ']', 16 },
+        { '6', 15 }, { '7', 16 }, { '8', 17 }, { '9', 18 }, { '0', 19 }, { '-', 20 }, { '=', 21 },
     };
     return map;
 }
 
-// Ctrl+Shift + one of these keys is a 4x4 drum-pad grid, separate from
-// (and takes priority over -- see MainEditorComponent::pollVirtualKeyboardInput())
-// the plain Ctrl virtual keyboard above. Right-hand-reachable on purpose,
-// same as the melodic keyboard -- the left hand stays on editing commands,
-// so both note-PERFORMANCE inputs (drums and the chromatic keyboard) live
-// on the right ("左手に寄せるのはドラムパッドやクロマチック鍵盤以外
-// ...ドラムやけんばんは右手にしたい"). Tried Cmd and Ctrl+Cmd as the
-// second modifier instead of Shift, but Cmd+M is unconditionally
-// reserved by macOS for "Minimize Window" -- confirmed via debug
-// logging that the M keydown event never even reaches the app while
-// Cmd is held, regardless of Ctrl also being down, so nothing built on
-// Cmd could ever ship for a grid that starts at M. Back to Ctrl+Shift.
+// One of these keys, held with NO modifier, is a 4x4 drum-pad grid --
+// mutually exclusive with the melodic keyboard above, switched with Enter
+// (see MainEditorComponent::toggleDrumGridMode()), not a second modifier
+// tier anymore. Right-hand-reachable on purpose, same as the melodic
+// keyboard -- the left hand stays on editing commands, so both note-
+// PERFORMANCE inputs (drums and the chromatic keyboard) live on the right
+// ("左手に寄せるのはドラムパッドやクロマチック鍵盤以外...ドラムやけんばんは
+// 右手にしたい"). Several physical keys are shared with the melodic map
+// above (M, J, K, L, U, I, O, P, comma, period, slash, semicolon, 6-9, 0)
+// -- harmless, since only one of the two maps is ever polled at a time.
 //
-// NOTE keys are the SHIFTED symbols, not the unshifted ones: macOS's
-// charactersIgnoringModifiers (what JUCE's isKeyCurrentlyDown() keys off
-// of) does NOT ignore Shift (only Ctrl/Option/Cmd), so with Shift held
-// the physical ',' key reports as '<', '7' reports as '&', etc. -- using
-// the unshifted characters here meant Ctrl+Shift+, could never match.
-// Straight chromatic left-to-right, then bottom-to-top, no octave
-// overlap between rows (unlike the melodic map's fourths layout -- a
-// drum rack's pads are conventionally just "next pad = next MIDI note,"
-// not a tonal/movable-shape instrument). Value = semitones above MIDI
-// 48 -- "C2" in this app's own note-name convention (60 = "C3", see
+// Straight chromatic left-to-right, then bottom-to-top, no octave overlap
+// between rows (unlike the melodic map's fourths layout -- a drum rack's
+// pads are conventionally just "next pad = next MIDI note," not a
+// tonal/movable-shape instrument). Value = semitones above MIDI 48 -- "C2"
+// in this app's own note-name convention (60 = "C3", see
 // virtualKeyboardKeyMap()'s comment above), so the 16 pads span 48-63
-// ("C2" to "D#3").
+// ("C2" to "D#3"). Each row starts one key further left than a plain
+// "M J U 7" grid would, so the bottom row's first pad is 'N' -- the same
+// starting key as the melodic keyboard above, for a consistent "where do I
+// put my hand" reference between the two modes
+// ("DrumPadの開始もNからにして左に全体をシフト").
 inline const std::map<char, int>& virtualDrumKeyMap()
 {
     static const std::map<char, int> map = {
-        { 'M', 0 }, { '<', 1 }, { '>', 2 }, { '?', 3 },
-        { 'J', 4 }, { 'K', 5 }, { 'L', 6 }, { ':', 7 },
-        { 'U', 8 }, { 'I', 9 }, { 'O', 10 }, { 'P', 11 },
-        { '&', 12 }, { '*', 13 }, { '(', 14 }, { ')', 15 },
+        { 'N', 0 }, { 'M', 1 }, { ',', 2 }, { '.', 3 },
+        { 'H', 4 }, { 'J', 5 }, { 'K', 6 }, { 'L', 7 },
+        { 'Y', 8 }, { 'U', 9 }, { 'I', 10 }, { 'O', 11 },
+        { '6', 12 }, { '7', 13 }, { '8', 14 }, { '9', 15 },
     };
     return map;
 }

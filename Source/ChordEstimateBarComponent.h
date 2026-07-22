@@ -67,8 +67,16 @@ public:
             // centred across it -- a merged span covering several bars of
             // the same sustained chord should still show exactly where
             // that chord begins, not float in the middle of a wide block.
+            // Degree name (e.g. "ii", "bVII") shown alongside the chord
+            // symbol in parentheses when a key is set (see
+            // ChordEstimate::degreeLabel's declaration) -- empty otherwise,
+            // so nothing changes when no key is selected
+            // ("コードの表示はディグリーネームと併記する").
+            auto displayText = chordEstimate.degreeLabel.isNotEmpty()
+                ? chordEstimate.label + " (" + chordEstimate.degreeLabel + ")"
+                : chordEstimate.label;
             g.setColour(juce::Colours::khaki);
-            g.drawText(chordEstimate.label, cellBounds, juce::Justification::centredLeft);
+            g.drawText(displayText, cellBounds, juce::Justification::centredLeft);
         }
     }
 

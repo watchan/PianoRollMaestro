@@ -2,12 +2,12 @@
 #include <JuceHeader.h>
 #include "ProjectModel.h"
 
-// Physical MIDI keyboard input -- purely a live monitor, same role as
-// HumInputListener: it never writes into the step grid on its own.
-// Committing a note into the grid is always an explicit action (see
-// MainEditorComponent::handleForwardKey()) shared with hum input, so a MIDI
-// keyboard is just another source feeding the same "last note heard"
-// pending-commit slot a mic would.
+// Physical MIDI keyboard (and PC-keyboard, via injectNote()) input --
+// purely a live monitor, it never writes into the step grid on its own.
+// Committing a note into the grid is a separate action (manual 'f', or
+// auto-commit -- see MainEditorComponent::handleForwardKey()/
+// handleMidiNoteChange()), so this is just the source feeding the pending
+// chord.
 class MidiInputRouter : public juce::MidiInputCallback
 {
 public:

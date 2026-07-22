@@ -10,6 +10,13 @@ struct ChordEstimate
     int startStep = 0;
     int lengthInSteps = 0;
     juce::String label; // e.g. "C", "Am", "G7" -- empty means silence (no notes sounding in this span)
+    // Roman-numeral scale degree relative to the key passed to estimate()
+    // (e.g. "ii", "V", "bVII") -- empty whenever label is empty, or no key
+    // was given (keyIsSet=false). Case reflects the CHORD's own quality
+    // (upper for major-ish, lower for minor-ish), not the key's diatonic
+    // function at that degree -- deliberately simple, matching this
+    // class's "not a real music-theory engine" scope (see below).
+    juce::String degreeLabel;
 };
 
 // Simple template-matching harmonic analysis, purely for a rough at-a-glance
@@ -36,5 +43,9 @@ public:
     // stepsPerQuarterNote / 2 (half a beat), fine enough to catch a chord
     // change mid-bar. Merged spans in the result can end up much longer
     // than this once consecutive segments share a label.
-    static std::vector<ChordEstimate> estimate(const Project& project, int segmentLengthInSteps);
+    // keyRootPitchClass/keyIsMinor/keyIsSet feed ChordEstimate::degreeLabel
+    // -- keyIsSet=false (e.g. the piano roll's scale tint is toggled Off)
+    // leaves every degreeLabel empty rather than guessing a key.
+    static std::vector<ChordEstimate> estimate(const Project& project, int segmentLengthInSteps,
+                                                 int keyRootPitchClass, bool keyIsMinor, bool keyIsSet);
 };

@@ -25,30 +25,53 @@ namespace
         return rows;
     }
 
-    // Drum-grid keys are the SHIFTED symbols (see virtualDrumKeyMap()'s
-    // comment) -- e.g. the physical ',' key shows as '<' here, so its label
-    // needs to be looked up under the row's UNSHIFTED character instead.
-    // Mirrors the exact unshifted->shifted mapping the physical keys
-    // produce with Shift held, for the punctuation/digit keys that change.
-    char toShiftedForDrumLookup(char unshifted)
-    {
-        switch (unshifted)
-        {
-            case ',': return '<';
-            case '.': return '>';
-            case '/': return '?';
-            case ';': return ':';
-            case '7': return '&';
-            case '8': return '*';
-            case '9': return '(';
-            case '0': return ')';
-            default:  return unshifted; // letters are unaffected by Shift for this purpose
-        }
-    }
-
     juce::String noteNameFor(int pitch)
     {
         return juce::MidiMessage::getMidiNoteName(pitch, true, true, 3);
+    }
+
+    // Specific (modifier tier, key) combos macOS/JUCE intercepts before this
+    // app ever sees them -- discovered by direct testing over the course of
+    // this app's development (this is the exhaustive, exact list; every
+    // instance is called out by name in MainEditorComponent::keyPressed()'s
+    // own comments explaining why that combo was avoided). Kept here purely
+    // so the overlay can show them greyed out with why, instead of looking
+    // exactly like every other plain unassigned key on the board
+    // ("MacOS側に処理を奪われるショートカットキーはグレーアウトでその機能を
+    // Keyboardに表示させたい"). needsCtrl/needsCmd/needsAlt/needsShift must
+    // ALL match the currently-held modifiers exactly -- these combos are
+    // only actually blocked at that one specific tier, not at every tier
+    // that happens to include the key.
+    struct BlockedCombo
+    {
+        bool needsCtrl, needsCmd, needsAlt, needsShift;
+        char key;
+        const char* reason;
+    };
+
+    const std::vector<BlockedCombo>& blockedCombos()
+    {
+        static const std::vector<BlockedCombo> combos = {
+            // Cmd+Shift+3 -- macOS's system-wide full-screen screenshot
+            // shortcut, never reaches any app.
+            { false, true, false, true, '3', "Screenshot\n(macOS)" },
+            // Shift+5 -- macOS/JUCE deliver this as the '%' character
+            // instead of a raw keypress this app can intercept.
+            { false, false, false, true, '5', "Types '%'\n(macOS)" },
+            // Option+E -- a dead key (accent composition), swallows the
+            // keypress waiting for a second character instead of firing.
+            { false, false, true, false, 'E', "Dead key\n(macOS)" },
+        };
+        return combos;
+    }
+
+    const BlockedCombo* findBlockedCombo(const juce::ModifierKeys& mods, char key)
+    {
+        for (auto& combo : blockedCombos())
+            if (combo.key == key && combo.needsCtrl == mods.isCtrlDown() && combo.needsCmd == mods.isCommandDown()
+                && combo.needsAlt == mods.isAltDown() && combo.needsShift == mods.isShiftDown())
+                return &combo;
+        return nullptr;
     }
 
     // The single source of truth for "what does pressing this key do right
@@ -59,29 +82,53 @@ namespace
     // whenever keyPressed() changes -- same accepted tradeoff as
     // ShortcutHelpBarComponent's static help text.
     std::map<char, juce::String> computeKeyLabels(const juce::ModifierKeys& mods, bool isSessionView,
-                                                   bool isHumActive, int transposeSemitones)
+                                                   int recMode, int transposeSemitones, bool isDrumGridActive)
     {
         std::map<char, juce::String> labels;
 
+        // Ctrl+Z/X (transpose), Ctrl+Shift+Z/X (velocity), Ctrl+T/G
+        // (tie/bar-jump), and Cmd+Ctrl+T/P/N (track add/prev/next) +
+        // Cmd+Ctrl+A/L/S/Z/X/I/D (automation editing) are the only Ctrl
+        // combos left -- the note maps themselves have no modifier of
+        // their own anymore (Enter toggles between them instead, see the
+        // plain tier below), so Ctrl+S sustain and these stay the only
+        // reason to still check Ctrl at all.
         if (mods.isCtrlDown())
         {
-            if (mods.isShiftDown())
+            if (mods.isCommandDown())
+            {
+                labels['T'] = "Add Track";
+                labels['P'] = "Prev Trk";
+                labels['N'] = "Next Trk";
+                labels['C'] = "Loop End";
+                labels['E'] = "Clip End";
+                labels['B'] = "Toggle Loop";
+                labels['5'] = "Range Start";
+                labels['R'] = "Range End";
+                labels['H'] = "Chord Trk";
+                labels['A'] = "Automation Mode";
+                labels['L'] = "Cycle Lane";
+                labels['W'] = "Auto Read/Touch";
+                labels['S'] = "Sustain Point";
+                labels['I'] = "Insert Point";
+                labels['D'] = "Delete Point";
+                labels['V'] = "Toggle Curve/Step";
+                labels['Z'] = mods.isShiftDown() ? "Curve Amt-- " : "Curve Amt-";
+                labels['X'] = mods.isShiftDown() ? "Curve Amt++" : "Curve Amt+";
+            }
+            else if (mods.isShiftDown())
             {
                 labels['Z'] = "Vel-";
                 labels['X'] = "Vel+";
-
-                std::vector<std::pair<char, int>> sorted(virtualDrumKeyMap().begin(), virtualDrumKeyMap().end());
-                std::sort(sorted.begin(), sorted.end(), [](auto& a, auto& b) { return a.second < b.second; });
-                for (size_t i = 0; i < sorted.size(); ++i)
-                    labels[sorted[i].first] = "Pad " + juce::String((int) i + 1);
             }
             else
             {
                 labels['Z'] = "Transp-";
                 labels['X'] = "Transp+";
-                labels['F'] = "Sustain";
-                for (auto& [ch, offset] : virtualKeyboardKeyMap())
-                    labels[ch] = noteNameFor(juce::jlimit(0, 127, 60 + transposeSemitones + offset));
+                labels['S'] = "Sustain";
+                labels['T'] = "Tie";
+                labels['G'] = "Jump Fwd";
+                labels['V'] = "Commit";
             }
             return labels;
         }
@@ -90,53 +137,70 @@ namespace
         {
             if (mods.isAltDown())
             {
-                labels['3'] = "Scroll Up";
-                labels['E'] = "Scroll Dn";
+                labels['G'] = "Scroll Up";
+                labels['B'] = "Scroll Dn";
             }
             else if (mods.isShiftDown())
             {
-                labels['W'] = "Sel Up+";
-                labels['E'] = "Sel Dn+";
+                labels['G'] = "Zoom V+";
+                labels['B'] = "Zoom V-";
+                labels['D'] = "Zoom H-";
+                labels['F'] = "Zoom H+";
                 labels['S'] = "Save As";
                 labels['Z'] = "Redo";
+                labels['U'] = "Auto-Quant";
+                labels['C'] = "Loop Start";
             }
             else
             {
-                labels['S'] = "Save";
+                labels['S'] = isSessionView ? "Save" : "Unquantize";
                 labels['O'] = "Open";
+                labels['0'] = "Save";
                 labels['N'] = "New";
-                labels['T'] = "Add Track";
+                labels['G'] = "Sel Top Note";
                 labels['Y'] = "Instrument";
                 labels['P'] = "Plugin Ed.";
                 labels[','] = "Audio Set.";
-                labels['G'] = "Prev Trk";
-                labels['B'] = "Next Trk";
-                labels['3'] = "Zoom V-";
-                labels['E'] = "Zoom V+";
-                labels['F'] = "Zoom H+";
-                labels['D'] = "Zoom H-";
+                labels['B'] = "Sel Note Dn";
                 labels['M'] = "Scale";
-                labels['C'] = "Loop End";
-                labels['A'] = "Chord Trk";
+                labels['C'] = "Copy";
+                labels['V'] = "Paste";
+                labels['D'] = "Dup Range";
                 labels['Z'] = "Undo";
                 labels['K'] = "Keyboard";
+                labels['X'] = isSessionView ? "Capture" : "Del+Back";
+                labels['U'] = "Quant Amt";
+                labels['5'] = "Raise Low(Oct)";
+                labels['R'] = "Lower High(Oct)";
+                if (!isSessionView)
+                {
+                    labels['1'] = "Quant 1/4";
+                    labels['2'] = "Quant 1/8";
+                    labels['3'] = "Quant 1/16";
+                    labels['4'] = "Triplet";
+                    labels['A'] = "Select All";
+                }
             }
             return labels;
         }
 
         if (mods.isShiftDown() && mods.isAltDown())
         {
-            labels['3'] = labels['W'] = "Oct Up";
-            labels['E'] = labels['R'] = "Oct Dn";
+            auto browseModePitchNudge = !isSessionView && recMode == 0;
+            labels['G'] = browseModePitchNudge ? "Pitch Up" : "Prev Trk";
+            labels['B'] = browseModePitchNudge ? "Pitch Dn" : "Next Trk";
             return labels;
         }
 
         if (mods.isAltDown())
         {
-            labels['T'] = "Pitch Up";
-            labels['G'] = "Pitch Dn";
             labels['Z'] = "Tempo-";
             labels['X'] = "Tempo+";
+            if (!isSessionView)
+            {
+                labels['D'] = "Nudge Left";
+                labels['F'] = "Nudge Right";
+            }
             return labels;
         }
 
@@ -144,12 +208,40 @@ namespace
         {
             labels['Z'] = "Duration-";
             labels['X'] = "Duration+";
-            labels['F'] = "Jump Fwd";
-            labels['D'] = "Jump Back";
-            labels['3'] = labels['W'] = "Prev Trk";
-            labels['E'] = "Next Trk";
-            labels['C'] = "Loop Start";
+            labels['F'] = "Sel Ext Fwd";
+            labels['D'] = "Sel Ext Back";
+            labels['Q'] = "Sel Up+";
+            labels['R'] = "Sel Dn+";
+            labels['A'] = "Jump Start";
+            labels['G'] = "Oct Up";
+            labels['B'] = "Oct Dn";
+            labels['W'] = "Count-In";
+            if (!isSessionView)
+            {
+                labels['C'] = "Jump Back 1 Bar";
+                labels['V'] = "Jump Fwd 1 Bar";
+            }
             return labels;
+        }
+
+        // Melodic keyboard / drum grid -- no modifier needed anymore, Enter
+        // toggles which of the two is live (see isDrumGridActive). Filled
+        // in first so the editing labels below can still take priority for
+        // any key that happens to also be a mapped note (shouldn't happen
+        // by design -- see VirtualKeyboardMaps.h's comment on why B/G/T/5
+        // and '0' were kept out of/left in the note maps specifically to
+        // avoid colliding with the plain-key editing commands below).
+        if (isDrumGridActive)
+        {
+            std::vector<std::pair<char, int>> sorted(virtualDrumKeyMap().begin(), virtualDrumKeyMap().end());
+            std::sort(sorted.begin(), sorted.end(), [](auto& a, auto& b) { return a.second < b.second; });
+            for (size_t i = 0; i < sorted.size(); ++i)
+                labels[sorted[i].first] = "Pad " + juce::String((int) i + 1);
+        }
+        else
+        {
+            for (auto& [ch, offset] : virtualKeyboardKeyMap())
+                labels[ch] = noteNameFor(juce::jlimit(0, 127, 60 + transposeSemitones + offset));
         }
 
         // Plain, mode-aware.
@@ -158,44 +250,58 @@ namespace
             labels['D'] = "Prev Slot";
             labels['F'] = "Next Slot";
             labels['A'] = "Del Clip";
-            labels['G'] = "Capture";
             labels['T'] = "Load Slot";
             labels['Z'] = "Stop Trk";
             labels['X'] = "Launch";
             labels['B'] = "Duplicate";
-            labels['3'] = "Prev Trk";
-            labels['E'] = "Next Trk";
         }
         else
         {
-            labels['D'] = "Del/Prev";
-            labels['F'] = "Place/Next";
+            labels['D'] = "Prev Note";
+            labels['F'] = "Next Note";
+            labels['B'] = "Pitch Dn";
             labels['A'] = "Clear Step";
-            labels['G'] = "Del+Back";
-            labels['T'] = "Tie";
             labels['Z'] = "Oct Dn";
             labels['X'] = "Oct Up";
-            labels['B'] = "Clip End";
-            labels['3'] = isHumActive ? "Hum Up" : "Sel Up";
-            labels['E'] = isHumActive ? "Hum Dn" : "Sel Dn";
+            labels['G'] = "Pitch Up";
+            labels['Q'] = "Dup Range";
+            labels['S'] = "Jump Back";
         }
-        labels['V'] = "Hum";
-        labels['C'] = "Loop";
-        labels['S'] = "Session";
+        // 3/e now mean prev/next track in both views (used to be Session-
+        // View-only, with Piano Roll repurposing '3' for quantize -- see
+        // the Cmd block above for where quantize moved).
+        labels['3'] = "Prev Trk";
+        labels['E'] = "Next Trk";
+        labels['C'] = "Retreat";
+        labels['V'] = "Advance";
         labels['W'] = "Metronome";
+        labels['R'] = recMode == 0 ? "Rec: Browse" : recMode == 1 ? "Rec: Manual" : recMode == 2 ? "Rec: Auto" : "Rec: Realtime";
+        // Note Repeat rate -- see MainEditorComponent::updateNoteRepeat()'s
+        // declaration. '0' is a note-map key and '3' is Prev Track, so the
+        // rate keys skip straight from '2' to '4'.
+        labels['1'] = "Repeat 1/4";
+        labels['2'] = "Repeat 1/8";
+        labels['4'] = "Repeat 1/16";
+        labels['5'] = "Repeat Triplet";
 
         return labels;
     }
 }
 
 KeyboardOverlayComponent::KeyboardOverlayComponent(std::function<bool()> isSessionViewIn,
-                                                     std::function<bool()> isHumActiveIn,
+                                                     std::function<int()> recModeIn,
                                                      std::function<int()> transposeSemitonesIn,
-                                                     std::function<std::vector<int>()> highlightedKeyCodesIn)
+                                                     std::function<std::vector<int>()> highlightedKeyCodesIn,
+                                                     std::function<bool()> isDrumGridActiveIn,
+                                                     std::function<int()> keyRootPitchClassIn,
+                                                     std::function<bool()> keyShownIn)
     : isSessionView(std::move(isSessionViewIn)),
-      isHumActive(std::move(isHumActiveIn)),
+      recMode(std::move(recModeIn)),
       transposeSemitones(std::move(transposeSemitonesIn)),
-      highlightedKeyCodes(std::move(highlightedKeyCodesIn))
+      highlightedKeyCodes(std::move(highlightedKeyCodesIn)),
+      isDrumGridActive(std::move(isDrumGridActiveIn)),
+      keyRootPitchClass(std::move(keyRootPitchClassIn)),
+      keyShown(std::move(keyShownIn))
 {
     setSize(640, 300);
     startTimerHz(15);
@@ -205,15 +311,22 @@ void KeyboardOverlayComponent::timerCallback()
 {
     auto mods = juce::ModifierKeys::getCurrentModifiers();
     auto session = isSessionView();
-    auto hum = isHumActive();
+    auto rec = recMode();
     auto highlighted = highlightedKeyCodes();
+    auto drumGrid = isDrumGridActive();
+    auto rootPitchClass = keyRootPitchClass();
+    auto shown = keyShown();
 
-    if (mods != lastMods || session != lastSessionView || hum != lastHumActive || highlighted != lastHighlighted)
+    if (mods != lastMods || session != lastSessionView || rec != lastRecMode || highlighted != lastHighlighted
+        || drumGrid != lastDrumGridActive || rootPitchClass != lastKeyRootPitchClass || shown != lastKeyShown)
     {
         lastMods = mods;
         lastSessionView = session;
-        lastHumActive = hum;
+        lastRecMode = rec;
         lastHighlighted = std::move(highlighted);
+        lastDrumGridActive = drumGrid;
+        lastKeyRootPitchClass = rootPitchClass;
+        lastKeyShown = shown;
         repaint();
     }
 }
@@ -223,8 +336,9 @@ void KeyboardOverlayComponent::paint(juce::Graphics& g)
     g.fillAll(juce::Colours::black);
 
     auto mods = juce::ModifierKeys::getCurrentModifiers();
-    auto drumTier = mods.isCtrlDown() && mods.isShiftDown();
-    auto labels = computeKeyLabels(mods, isSessionView(), isHumActive(), transposeSemitones());
+    auto plainTier = !mods.isCtrlDown() && !mods.isCommandDown() && !mods.isAltDown() && !mods.isShiftDown();
+    auto drumGrid = isDrumGridActive();
+    auto labels = computeKeyLabels(mods, isSessionView(), recMode(), transposeSemitones(), drumGrid);
     auto highlighted = highlightedKeyCodes(); // fresh, not the cached lastHighlighted (that's purely for timerCallback()'s change-detection)
 
     constexpr float keyUnit = 46.0f;
@@ -243,14 +357,27 @@ void KeyboardOverlayComponent::paint(juce::Graphics& g)
             auto x = 10.0f + (row.xOffsetUnits + spec.xUnits) * keyUnit;
             auto bounds = juce::Rectangle<float>(x, y, keySize, keySize);
 
-            // Ctrl (+Shift) tier keys not in either performance map show
-            // dim/empty -- everything else in the grid is inert while
-            // playing notes, same as the real app (see keyPressed()'s
-            // Ctrl-guard, which claims every Ctrl combo whether or not it
-            // maps to a note).
-            auto lookupKey = (mods.isCtrlDown() && drumTier) ? toShiftedForDrumLookup(spec.key) : spec.key;
-            auto it = labels.find(lookupKey);
+            // No more shift-remapping needed -- the drum map now stores
+            // unshifted characters directly (matching this grid's own key
+            // labels), since it no longer needs Ctrl+Shift to disambiguate
+            // from the melodic map.
+            auto it = labels.find(spec.key);
             auto hasLabel = it != labels.end();
+
+            // A combo macOS intercepts before this app ever sees it (see
+            // blockedCombos()) takes priority over everything else below --
+            // greyed out and labelled with why, instead of looking exactly
+            // like a plain unassigned key.
+            if (auto* blocked = findBlockedCombo(mods, spec.key))
+            {
+                g.setColour(juce::Colours::grey.withAlpha(0.12f));
+                g.fillRoundedRectangle(bounds, 4.0f);
+                g.setColour(juce::Colours::grey.withAlpha(0.4f));
+                g.drawRoundedRectangle(bounds, 4.0f, 1.0f);
+                g.setColour(juce::Colours::grey.withAlpha(0.7f));
+                g.drawFittedText(blocked->reason, bounds.toNearestInt().reduced(2), juce::Justification::centred, 3, 0.7f);
+                continue;
+            }
 
             // Currently-highlighted keys -- a distinct bright colour
             // overriding the normal tier colour, so it's obvious at a
@@ -261,22 +388,42 @@ void KeyboardOverlayComponent::paint(juce::Graphics& g)
             // unions currently-held note/drum keys with the last plain
             // editing-command keypress -- the latter stays lit until the
             // next one, same "persists until overwritten" convention
-            // ShortcutHelpBarComponent's last-action text uses). Compared
-            // against lookupKey, not spec.key -- drum-tier note presses are
-            // tracked by their SHIFTED character (see
-            // pollVirtualKeyboardInput()'s pollOneMap, which stores
-            // whatever virtualDrumKeyMap() itself is keyed by), same as the
-            // label lookup just above.
-            auto isLastPressed = std::find(highlighted.begin(), highlighted.end(), (int) lookupKey) != highlighted.end();
+            // ShortcutHelpBarComponent's last-action text uses).
+            auto isLastPressed = std::find(highlighted.begin(), highlighted.end(), (int) spec.key) != highlighted.end();
+
+            // Note-performance colouring only applies in the plain tier --
+            // that's the only tier computeKeyLabels() actually fills in
+            // note labels for (see its comment), even though the note maps
+            // themselves are polled regardless of modifiers.
+            auto isNoteKey = plainTier && ((drumGrid ? virtualDrumKeyMap() : virtualKeyboardKeyMap()).count(spec.key) > 0);
+
+            // Root-of-key highlight: melodic keyboard only (drum pads
+            // aren't pitched notes) -- a distinct colour on every key whose
+            // note is the estimated key's root, so the root is visible at
+            // a glance while playing ("キーが判明したら、Keyboard上で、
+            // Rootのキーの色を変えて。ルートがわかるように").
+            auto isRootKey = false;
+            if (isNoteKey && !drumGrid && keyShown())
+            {
+                auto offsetIt = virtualKeyboardKeyMap().find(spec.key);
+                if (offsetIt != virtualKeyboardKeyMap().end())
+                {
+                    auto pitch = juce::jlimit(0, 127, 60 + transposeSemitones() + offsetIt->second);
+                    isRootKey = ((pitch % 12) + 12) % 12 == keyRootPitchClass();
+                }
+            }
 
             if (isLastPressed)
             {
                 g.setColour(juce::Colours::yellow);
             }
-            else if (mods.isCtrlDown())
+            else if (isRootKey)
             {
-                g.setColour(hasLabel ? (drumTier ? juce::Colours::mediumpurple : juce::Colours::mediumseagreen)
-                                      : juce::Colours::grey.withAlpha(0.15f));
+                g.setColour(juce::Colours::hotpink);
+            }
+            else if (isNoteKey)
+            {
+                g.setColour(drumGrid ? juce::Colours::mediumpurple : juce::Colours::mediumseagreen);
             }
             else
             {
@@ -306,9 +453,11 @@ void KeyboardOverlayComponent::paint(juce::Graphics& g)
     auto bottomY = topMargin + (float) keyboardRows().size() * keyUnit + 6.0f;
     auto spaceBounds = juce::Rectangle<float>(10.0f + 1.25f * keyUnit, bottomY, keyUnit * 5.0f, keySize);
     auto tabBounds = juce::Rectangle<float>(10.0f, bottomY, keyUnit * 1.0f, keySize);
+    auto enterBounds = juce::Rectangle<float>(10.0f + 6.25f * keyUnit, bottomY, keyUnit * 1.5f, keySize);
 
     const std::vector<std::pair<juce::Rectangle<float>, juce::String>> extraKeys = {
-        { spaceBounds, "Advance" }, { tabBounds, "Play" }
+        { spaceBounds, "Play/Stop" }, { tabBounds, "Session" },
+        { enterBounds, drumGrid ? "-> Chromatic" : "-> Drum" },
     };
     for (auto& [bounds, label] : extraKeys)
     {
@@ -354,6 +503,8 @@ void KeyboardOverlayComponent::paint(juce::Graphics& g)
 
     g.setColour(juce::Colours::lightgrey);
     g.setFont(juce::FontOptions(12.0f));
-    g.drawText(juce::String(isSessionView() ? "Session View" : "Piano Roll") + (isHumActive() ? "  |  HUM ON" : ""),
-               juce::Rectangle<float>(badgeX, modY, 200.0f, 26.0f), juce::Justification::centredLeft);
+    auto recModeSuffix = recMode() == 0 ? "" : recMode() == 1 ? "  |  REC MANUAL" : recMode() == 2 ? "  |  REC AUTO" : "  |  REC REALTIME";
+    auto noteModeSuffix = juce::String("  |  NOTE ") + (drumGrid ? "DRUM" : "CHROMATIC");
+    g.drawText(juce::String(isSessionView() ? "Session View" : "Piano Roll") + recModeSuffix + noteModeSuffix,
+               juce::Rectangle<float>(badgeX, modY, 260.0f, 26.0f), juce::Justification::centredLeft);
 }

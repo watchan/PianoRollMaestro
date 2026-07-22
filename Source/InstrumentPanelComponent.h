@@ -36,10 +36,16 @@ public:
 
 private:
     // Intercepts navigation before it becomes typed text; every other key
-    // falls through to normal text editing. No arrow keys, per the app's
-    // hands-stay-on-home-position rule -- Cmd+3/Cmd+E move the highlight
-    // instead, mirroring the same 3/e track-switch mnemonic used elsewhere
-    // (Cmd rather than Ctrl to match every other modifier shortcut in the app).
+    // falls through to normal text editing. Up/Down arrow keys move the
+    // highlight -- a deliberate, explicit exception to the app's usual
+    // hands-stay-on-home-position rule, made specifically for this
+    // candidate-list picker (a plain search/select UI where arrow keys are
+    // the conventional, expected control) -- and Cmd+G/Cmd+B do the same,
+    // matching this app's usual prev/next mnemonic everywhere else
+    // (Cmd rather than Ctrl to match every other modifier shortcut in the
+    // app). Previously Cmd+3/Cmd+E (the 3/e track-switch mnemonic) -- moved
+    // to G/B since nothing else in this isolated component needs 3/e for
+    // anything, and G/B is the more standard pairing elsewhere in the app.
     class SearchEditor : public juce::TextEditor
     {
     public:

@@ -68,10 +68,17 @@ namespace
         return templates;
     }
 
+    struct ChordMatch
+    {
+        juce::String label;
+        int root = -1;
+        const char* qualitySuffix = nullptr; // nullptr = no match (see bestChordMatch's numActive < 3 early-out)
+    };
+
     // bassPitchClass = pitch class of the lowest note actually sounding in
     // this bar, or -1 if nothing is (silence). -1 never matches a root
     // (0-11), so it just disables the bonus below.
-    juce::String bestChordLabel(const PitchClassSet& active, int bassPitchClass)
+    ChordMatch bestChordMatch(const PitchClassSet& active, int bassPitchClass)
     {
         static const char* const noteNames[12] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
 
@@ -84,6 +91,7 @@ namespace
         juce::String bestLabel;
         auto bestScore = -1000;
         auto bestRoot = -1;
+        const char* bestQuality = "";
 
         for (int root = 0; root < 12; ++root)
         {
@@ -118,6 +126,7 @@ namespace
                 {
                     bestScore = score;
                     bestRoot = root;
+                    bestQuality = chordTemplate.qualitySuffix;
                     bestLabel = juce::String(noteNames[root]) + chordTemplate.qualitySuffix;
                 }
             }
@@ -129,11 +138,58 @@ namespace
         if (bassPitchClass >= 0 && bassPitchClass != bestRoot)
             bestLabel << "/" << noteNames[bassPitchClass];
 
-        return bestLabel;
+        return { bestLabel, bestRoot, bestQuality };
+    }
+
+    // Roman-numeral scale degree of chordRoot relative to (keyRoot,
+    // keyIsMinor) -- see ChordEstimate::degreeLabel's declaration for the
+    // simplifications this makes. Case reflects the CHORD's own quality
+    // (qualitySuffix), not the key's diatonic function at that degree.
+    juce::String degreeLabelFor(int chordRoot, const char* qualitySuffix, int keyRoot, bool keyIsMinor)
+    {
+        static const int majorOffsets[7] = { 0, 2, 4, 5, 7, 9, 11 };
+        static const int minorOffsets[7] = { 0, 2, 3, 5, 7, 8, 10 };
+        static const char* const numeralBases[7] = { "I", "II", "III", "IV", "V", "VI", "VII" };
+
+        auto* offsets = keyIsMinor ? minorOffsets : majorOffsets;
+        auto semitoneOffset = ((chordRoot - keyRoot) % 12 + 12) % 12;
+
+        juce::String numeral;
+        auto exactIndex = -1;
+        for (int i = 0; i < 7; ++i)
+            if (offsets[i] == semitoneOffset) { exactIndex = i; break; }
+
+        if (exactIndex >= 0)
+        {
+            numeral = numeralBases[exactIndex];
+        }
+        else
+        {
+            // Chromatic (non-diatonic) root -- flatten the next diatonic
+            // degree above it (standard borrowed-chord shorthand, e.g. the
+            // semitone between I and II becomes "bII"). Wraps to the
+            // octave-up tonic ("bI") if nothing above it in this octave.
+            auto aboveIndex = 0;
+            for (int i = 0; i < 7; ++i)
+                if (offsets[i] > semitoneOffset) { aboveIndex = i; break; }
+            numeral = juce::String(juce::CharPointer_UTF8("\xe2\x99\xad")) + numeralBases[aboveIndex]; // U+266D FLAT SIGN
+        }
+
+        juce::String quality(qualitySuffix);
+        auto isMinorish = quality == "m" || quality == "m7" || quality == "m6" || quality == "dim";
+        if (isMinorish)
+            numeral = numeral.toLowerCase();
+        if (quality == "dim")
+            numeral += juce::String(juce::CharPointer_UTF8("\xc2\xb0")); // U+00B0 DEGREE SIGN
+        else if (quality == "aug")
+            numeral << "+";
+
+        return numeral;
     }
 }
 
-std::vector<ChordEstimate> ChordEstimator::estimate(const Project& project, int segmentLengthInSteps)
+std::vector<ChordEstimate> ChordEstimator::estimate(const Project& project, int segmentLengthInSteps,
+                                                     int keyRootPitchClass, bool keyIsMinor, bool keyIsSet)
 {
     std::vector<ChordEstimate> segments;
     if (segmentLengthInSteps <= 0)
@@ -177,10 +233,14 @@ std::vector<ChordEstimate> ChordEstimator::estimate(const Project& project, int 
 
         auto bassPitchClass = lowestPitchInSegment >= 0 ? ((lowestPitchInSegment % 12) + 12) % 12 : -1;
 
+        auto match = bestChordMatch(combined, bassPitchClass);
+
         ChordEstimate segment;
         segment.startStep = segmentStart;
         segment.lengthInSteps = juce::jmin(segmentLengthInSteps, totalSteps - segmentStart);
-        segment.label = bestChordLabel(combined, bassPitchClass);
+        segment.label = match.label;
+        if (keyIsSet && match.root >= 0)
+            segment.degreeLabel = degreeLabelFor(match.root, match.qualitySuffix, keyRootPitchClass, keyIsMinor);
         segments.push_back(segment);
     }
 
@@ -203,7 +263,10 @@ std::vector<ChordEstimate> ChordEstimator::estimate(const Project& project, int 
     auto beatLengthInSteps = segmentLengthInSteps * 2;
     for (auto& span : merged)
         if (span.lengthInSteps < beatLengthInSteps)
+        {
             span.label = {};
+            span.degreeLabel = {};
+        }
 
     // Re-merge: the filter above can turn a real label into "", making it
     // adjacent to a neighbouring silent/filtered span that should combine

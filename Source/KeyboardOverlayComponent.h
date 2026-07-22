@@ -20,10 +20,20 @@ public:
     // return more than one code at once -- e.g. a held chord on the
     // virtual keyboard highlights every one of its keys simultaneously, not
     // just whichever was struck most recently.
+    // recModeIn: 0 = Off (Browse), 1 = Manual, 2 = Auto, 3 = Realtime --
+    // matches MainEditorComponent::RecMode's underlying values. isDrumGridActiveIn:
+    // matches MainEditorComponent::drumGridModeActive (Enter toggles it).
+    // keyRootPitchClassIn/keyShownIn: MainEditorComponent::scaleRootPitchClass
+    // and (currentScaleType != Off) -- when shown, every melodic-keyboard key
+    // whose note is the estimated key's root gets a distinct highlight colour
+    // ("Rootのキーの色を変えて。ルートがわかるように").
     KeyboardOverlayComponent(std::function<bool()> isSessionViewIn,
-                              std::function<bool()> isHumActiveIn,
+                              std::function<int()> recModeIn,
                               std::function<int()> transposeSemitonesIn,
-                              std::function<std::vector<int>()> highlightedKeyCodesIn);
+                              std::function<std::vector<int>()> highlightedKeyCodesIn,
+                              std::function<bool()> isDrumGridActiveIn,
+                              std::function<int()> keyRootPitchClassIn,
+                              std::function<bool()> keyShownIn);
 
     void paint(juce::Graphics& g) override;
 
@@ -31,14 +41,20 @@ private:
     void timerCallback() override;
 
     std::function<bool()> isSessionView;
-    std::function<bool()> isHumActive;
+    std::function<int()> recMode;
     std::function<int()> transposeSemitones;
     std::function<std::vector<int>()> highlightedKeyCodes;
+    std::function<bool()> isDrumGridActive;
+    std::function<int()> keyRootPitchClass;
+    std::function<bool()> keyShown;
 
     // Change-detection for the ~15Hz poll -- only repaint() when something
     // actually differs from last tick, not on every single poll.
     juce::ModifierKeys lastMods;
     bool lastSessionView = false;
-    bool lastHumActive = false;
+    int lastRecMode = 0;
     std::vector<int> lastHighlighted;
+    bool lastDrumGridActive = false;
+    int lastKeyRootPitchClass = 0;
+    bool lastKeyShown = false;
 };

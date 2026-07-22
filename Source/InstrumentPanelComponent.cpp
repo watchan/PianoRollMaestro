@@ -2,12 +2,15 @@
 
 bool InstrumentPanelComponent::SearchEditor::keyPressed(const juce::KeyPress& key)
 {
-    // Same 3/e mnemonic as track switching (3=previous/up, e=next/down),
+    // Same g/b mnemonic as this app's usual prev/next pairing elsewhere,
     // Cmd-modified so it doesn't collide with typing a search query that
-    // happens to contain '3' or 'e' (and to match every other modifier
-    // shortcut in the app, which is always Cmd, never Ctrl).
-    if (key.getModifiers().isCommandDown() && key.isKeyCode('3')) { if (onMoveHighlight) onMoveHighlight(-1); return true; }
-    if (key.getModifiers().isCommandDown() && key.isKeyCode('E')) { if (onMoveHighlight) onMoveHighlight(1); return true; }
+    // happens to contain 'g' or 'b' (and to match every other modifier
+    // shortcut in the app, which is always Cmd, never Ctrl). Up/Down arrow
+    // keys work too -- an explicit exception to the app's usual no-arrow-
+    // keys rule, made for this candidate-list picker specifically (see
+    // this class's own declaration).
+    if ((key.getModifiers().isCommandDown() && key.isKeyCode('G')) || key == juce::KeyPress::upKey) { if (onMoveHighlight) onMoveHighlight(-1); return true; }
+    if ((key.getModifiers().isCommandDown() && key.isKeyCode('B')) || key == juce::KeyPress::downKey) { if (onMoveHighlight) onMoveHighlight(1); return true; }
     // Tab also confirms the highlighted instrument, same as Enter -- Tab is
     // already this app's "confirm/advance" key elsewhere (e.g. play/stop),
     // so accepting it here too avoids forcing a reach for Enter specifically.

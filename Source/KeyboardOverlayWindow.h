@@ -9,15 +9,21 @@
 class KeyboardOverlayWindow : public juce::DocumentWindow
 {
 public:
+    // recModeIn: 0 = Off (Browse), 1 = Manual, 2 = Auto, 3 = Realtime.
     KeyboardOverlayWindow(std::function<bool()> isSessionViewIn,
-                           std::function<bool()> isHumActiveIn,
+                           std::function<int()> recModeIn,
                            std::function<int()> transposeSemitonesIn,
-                           std::function<std::vector<int>()> highlightedKeyCodesIn)
+                           std::function<std::vector<int>()> highlightedKeyCodesIn,
+                           std::function<bool()> isDrumGridActiveIn,
+                           std::function<int()> keyRootPitchClassIn,
+                           std::function<bool()> keyShownIn)
         : DocumentWindow("Keyboard", juce::Colours::darkgrey, DocumentWindow::closeButton)
     {
         setUsingNativeTitleBar(true);
-        setContentOwned(new KeyboardOverlayComponent(std::move(isSessionViewIn), std::move(isHumActiveIn),
-                                                        std::move(transposeSemitonesIn), std::move(highlightedKeyCodesIn)),
+        setContentOwned(new KeyboardOverlayComponent(std::move(isSessionViewIn), std::move(recModeIn),
+                                                        std::move(transposeSemitonesIn), std::move(highlightedKeyCodesIn),
+                                                        std::move(isDrumGridActiveIn), std::move(keyRootPitchClassIn),
+                                                        std::move(keyShownIn)),
                           true);
         setResizable(false, false);
 
