@@ -6,6 +6,18 @@ Built with [JUCE](https://juce.com/) (8.0.3), as a Projucer `guiapp` project.
 
 ## Demo
 
+**Day 6** — mouse-free automation: touching a loaded plugin's own knob creates/selects an automation lane for that parameter, and everything else (plotting points, drawing curves) stays entirely on the keyboard:
+
+![Demo Day 6: mouse-free plugin-parameter automation, touch to create a lane, everything else on the keyboard](docs/demo6.gif)
+
+Muted GIF above — [watch with sound on X](https://x.com/watchan/status/2080018306883547204).
+
+**Day 5** — one-key chord inversion (drop the top note an octave / raise the bottom note an octave), automatic chord detection with degree names (choose which tracks feed the analysis), and real-time recording:
+
+![Demo Day 5: one-key chord inversion, automatic chord detection with degree names, real-time recording](docs/demo5.gif)
+
+Muted GIF above — [watch with sound on X](https://x.com/watchan/status/2078928639710925098).
+
 **Day 3** — PC-keyboard chromatic note input (freeing up from needing a physical MIDI keyboard), a dedicated MASCHINE-style 4x4 pad grid on the PC keyboard, and the always-visible live shortcut overlay:
 
 ![Demo Day 3: PC-keyboard chromatic input, a MASCHINE-style 4x4 pad grid, and the always-visible shortcut overlay](docs/demo3.gif)
