@@ -116,8 +116,7 @@ std::vector<TransportBarComponent::Badge> TransportBarComponent::buildBadges() c
     // plugin's own knob while Touch is on records that gesture (while
     // playing) or previews it (while stopped) into an automation lane.
     // Bright red while Touch is on since it's a record-adjacent state --
-    // same reasoning REC's own badge colors use ("オートメーションの
-    // Read／Writeがわからない見分けがつかない").
+    // same reasoning REC's own badge colors use.
     badges.push_back({ juce::String("AUTO: ") + (automationTouchModeEnabled ? "TOUCH" : "READ"),
                         automationTouchModeEnabled ? juce::Colours::red : juce::Colours::grey,
                         automationTouchModeEnabled, 120, false, 13.0f });
@@ -127,8 +126,7 @@ std::vector<TransportBarComponent::Badge> TransportBarComponent::buildBadges() c
     // (MainEditorComponent::updatePendingNoteDisplays() pushes it on every
     // refresh regardless of whether a chord is actually pending), so this
     // name is valid to show ALWAYS, not just while a chord happens to be
-    // held ("今指定されている音価がわからない。わかりやすいところに
-    // 表示したい"). Flows as one more badge for wrapping purposes (its
+    // held. Flows as one more badge for wrapping purposes (its
     // width is measured, not fixed, since NOTE: a held chord's name makes
     // it grow/shrink) but draws as plain left-aligned text, not a chip --
     // see isPlainText's declaration.

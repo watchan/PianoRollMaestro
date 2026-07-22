@@ -7,7 +7,7 @@
 // Session View block is shown at once, alongside the shortcuts that mean
 // the same thing in both -- showing every shortcut from both views at once
 // overflowed a single line so badly most of it was clipped off-screen and
-// simply invisible ("下のヘルプ、ショートカット多すぎて見えない"). Two
+// simply invisible. Two
 // further, mutually-exclusive-with-each-other-and-with-the-above overlay
 // states narrow this down even further to just what's actually usable
 // right now: setAutomationEditMode() while editing automation, and
@@ -43,9 +43,7 @@ public:
     // (d/f mean something completely different, pitch-nudge doesn't apply,
     // etc.), so showing them alongside the automation block was just noise
     // crowding out the shortcuts actually usable right now -- same
-    // reasoning as the existing Piano Roll/Session View split above
-    // ("おーとめーしょんレーンに行くと、おーとめーしょん関連の
-    // ショートカットだけが表示される").
+    // reasoning as the existing Piano Roll/Session View split above.
     void setAutomationEditMode(bool activeIn)
     {
         if (automationEditModeActive == activeIn)
@@ -64,9 +62,7 @@ public:
     // pendingChord isn't cleared by committing itself (repeated `Ctrl+V`
     // re-commits the same chord), only by playing something new or the
     // ~2s idle auto-clear (see pendingChordIdleSinceMs's declaration), so
-    // this block stays up exactly as long as that note is still "fresh"
-    // ("ノートを入力したら、ノート操作系のヘルプが出るように。
-    // コミット、たいなど").
+    // this block stays up exactly as long as that note is still "fresh".
     void setNotePending(bool pendingIn)
     {
         if (notePending == pendingIn)

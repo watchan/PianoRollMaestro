@@ -29,9 +29,9 @@ private:
     // Base note this voice is currently playing, re-applied (bent) every
     // time startNote()/pitchWheelMoved() sets angleDelta -- unlike a
     // hosted plugin, this built-in synth has no other way to know what
-    // frequency to bend FROM ("ピッチベンド入れてもピッチ変わらない" --
-    // pitchWheelMoved() used to be a no-op here, so the message was being
-    // sent correctly the whole time but this voice just ignored it).
+    // frequency to bend FROM (pitchWheelMoved() used to be a no-op here,
+    // so the message was being sent correctly the whole time but this
+    // voice just ignored it).
     int currentNoteNumber = -1;
     void updateAngleDelta(int pitchWheelValue);
 };

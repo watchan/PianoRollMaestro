@@ -249,8 +249,7 @@ static juce::String noteName(int pitch)
 // strip drawn down the left edge, which exists purely so scrolling the
 // piano roll up/down gives an immediate, at-a-glance sense of whether
 // you're up in a high register or down in a low one -- the row window
-// alone doesn't convey that ("画面遷移した時にぱっと見高い方にいるのか、
-// 低い方にいるのかわからない").
+// alone doesn't convey that.
 static juce::Colour pitchHeightColour(int pitch)
 {
     auto t = juce::jlimit(0.0f, 1.0f, (float) pitch / 127.0f);
@@ -298,8 +297,7 @@ void StepGridComponent::paint(juce::Graphics& g)
     // get written into any of them (hardware/Touch capture) regardless of
     // whether you've ever entered automation edit mode, so hiding them
     // until you explicitly did meant recorded automation could exist
-    // invisibly ("オートメーションは最初からレーンを表示させる。基本的に
-    // 入力はどのレーンも常に受け付ける").
+    // invisibly.
     // +1 more lane per touch-recorded plugin parameter (see
     // MidiClip::parameterLanes' declaration) -- clip can be null here
     // (nothing loaded yet), checked explicitly since the null guard
@@ -330,14 +328,11 @@ void StepGridComponent::paint(juce::Graphics& g)
     // same spirit as the pitch-height strip down the left edge
     // (pitchBarWidth) -- shifts hue every 4 measures and gradients
     // smoothly across each one, so it's visible at a glance both which
-    // phrase you're looking at (hue) and where within it (the gradient)
-    // ("縦に引いた色のバーと同じように、4小節の中でのグラデーションと、
-    // 4小節単位で色相が変わってブロックが見えるような色合いにしたい").
+    // phrase you're looking at (hue) and where within it (the gradient).
     // Deliberately a thin, muted bar -- just a hint of colour up top, not a
     // full-height background wash (an earlier version tinted the whole
     // grid) and not a loud/saturated one either (an earlier version of
-    // this bar itself was too vivid: "全体にやると見づらすぎる...上の方に
-    // 色のバーが見えるというくらいをイメージしてた"). Sits in the existing
+    // this bar itself was too vivid). Sits in the existing
     // measure-label header strip, just above the grid rows.
     {
         auto stepsPerBlock = stepsPerMeasure * 4;
@@ -358,9 +353,7 @@ void StepGridComponent::paint(juce::Graphics& g)
             // Small, fixed hue step per block -- deliberately NOT the
             // golden-angle trick (max-contrast jumps like red-to-blue
             // between neighbours), which read as jarring rather than a
-            // clean, easy cut ("赤、アオみたいな急展開ではなくそこも切れ目
-            // はわかりやすいけど、キツすぎず目に優しいところを狙いたい").
-            // Adjacent blocks land a modest step apart on the colour
+            // clean, easy cut. Adjacent blocks land a modest step apart on the colour
             // wheel -- close enough to stay calm, far enough that the
             // boundary is still obvious. Low saturation/value throughout
             // keeps the whole thing dark and unobtrusive.
@@ -386,9 +379,7 @@ void StepGridComponent::paint(juce::Graphics& g)
     // "white key" rows, FIXED regardless of the estimated key -- purely a
     // static visual reference (like a real keyboard's black/white keys),
     // no longer tied to KeyEstimator's guess or the Cmd+M Auto/Off toggle.
-    // In-key/out-of-key marking is the red note-outline below instead
-    // ("ノートの縞模様はCメジャー想定の、ピアノの色で固定する。Keyによ
-    // らず。インキー、アウトキーは赤枠でノートが囲まれて気づけるので").
+    // In-key/out-of-key marking is the red note-outline below instead.
     static constexpr bool pianoWhiteKeyByPitchClass[12] =
         { true, false, true, false, true, true, false, true, false, true, false, true };
     for (int row = 0; row < numRows; ++row)
@@ -431,8 +422,7 @@ void StepGridComponent::paint(juce::Graphics& g)
     // can land on the very same screen column) -- without this, drawing
     // that many overlapping ~6%-alpha lines on top of each other on the
     // same pixel accumulates toward fully opaque, washing the whole grid
-    // white instead of reading as faint guide lines
-    // ("線が細かくなりすぎて白くなってしまってみづらい"). Beat/measure
+    // white instead of reading as faint guide lines. Beat/measure
     // lines are far sparser (960/48-per-quarter apart) and stay
     // comfortably distinguishable even at maximum zoom-out, so they're
     // never skipped.
@@ -512,7 +502,7 @@ void StepGridComponent::paint(juce::Graphics& g)
     // pixel at the default zoom) -- otherwise this tint is effectively
     // invisible at exactly the moments it matters most, e.g. right after
     // opening the app, with no visual sign of where the (mouse-free-only)
-    // edit cursor actually is ("ロケータが見えない" -- traced to this,
+    // edit cursor actually is (traced to this,
     // not the playhead, which already had no such problem since a whole
     // beat/measure line is never sub-pixel).
     {
@@ -614,8 +604,7 @@ void StepGridComponent::paint(juce::Graphics& g)
             // row tint alone only hints at this via background colour,
             // which isn't obvious per-note, especially zoomed out or when
             // an out-of-key note sits right next to an in-key one at
-            // similar brightness ("ノートがin keyかout keyがわかるように
-            // 印をつけたい"). inScale is all-true when the scale tint is
+            // similar brightness. inScale is all-true when the scale tint is
             // toggled Off (Cmd+M), so this naturally draws nothing then.
             // Drawn before the (thicker, white) selection outline below so
             // a selected out-of-key note still reads as "selected" first.
@@ -637,9 +626,7 @@ void StepGridComponent::paint(juce::Graphics& g)
             // findOwningNoteStepIndex() resolves those the same way), and
             // comparing stepIndex == cursorStep directly meant landing on
             // the tail of a tie never showed the narrowed selection at all
-            // -- it looked permanently stuck on "whole chord selected"
-            // ("タイで伸ばしたノートについて、終端の方で触れた状態の時は
-            // 全て選択された状態で...変わらない").
+            // -- it looked permanently stuck on "whole chord selected".
             if (cursorStep >= stepIndex && cursorStep < stepIndex + totalLengthInSteps
                 && std::find(selectedPitches.begin(), selectedPitches.end(), note.pitch) != selectedPitches.end())
             {
@@ -653,8 +640,7 @@ void StepGridComponent::paint(juce::Graphics& g)
         // WHOLE note block (every visible pitch in the chord, full tied
         // duration), distinct from the white per-pitch outline above which
         // only ever marks the single cursor step. Was gold, but that's too
-        // close to the note fill's own orange to read clearly
-        // ("選択したNoteの枠が見づらいので少し色を変えて見やすくしたい").
+        // close to the note fill's own orange to read clearly.
         if (std::find(selectedNoteStarts.begin(), selectedNoteStarts.end(), stepIndex) != selectedNoteStarts.end())
         {
             auto topRow = -1, bottomRow = -1;
@@ -839,9 +825,7 @@ void StepGridComponent::paint(juce::Graphics& g)
                 // At least ~1.5px wide even when heavily zoomed out or a
                 // chord splits an already-thin column many ways -- otherwise
                 // barWidth rounds down toward 0 and the bar effectively
-                // disappears ("ウィンドウの幅を狭くするとピクセルが細かす
-                // ぎて消えてみるみたい" / "最低1-2px確保はした方が良い
-                // かも"). Bars can overlap slightly in this case, but that's
+                // disappears. Bars can overlap slightly in this case, but that's
                 // preferable to being invisible.
                 auto visibleBarWidth = juce::jmax(1.5f, barWidth - 1.0f);
                 auto barRect = juce::Rectangle<float>(x + (float) i * barWidth + 0.5f,
@@ -858,8 +842,7 @@ void StepGridComponent::paint(juce::Graphics& g)
     // the exact same recorded events PlaybackEngine resends during
     // playback (see MidiClip::sustainPedalEvents' declaration). A thin
     // strip beneath the velocity lane, filled pink while the pedal is
-    // down, empty otherwise ("Sustainもピアノロールの下の方にON／OFFが
-    // わかるように表示してほしい").
+    // down, empty otherwise.
     {
         g.setColour(juce::Colours::white.withAlpha(0.15f));
         g.drawLine(labelGutterWidth, sustainLaneTop, (float) getWidth(), sustainLaneTop, 1.0f);
@@ -971,8 +954,7 @@ void StepGridComponent::paint(juce::Graphics& g)
                 // prior bug) made every sample an affine function of the
                 // same eased parameter, so the plotted points always fell
                 // on one straight line no matter the curve shape -- Ease
-                // In/Out was visually indistinguishable from Linear
-                // ("ease in outってリニアと違いが見えない").
+                // In/Out was visually indistinguishable from Linear.
                 auto exponent = 1.0 + std::abs((double) curveAmount) * automationCurveAmountExponentScale;
                 constexpr int subdivisions = 16;
                 for (int s = 1; s <= subdivisions; ++s)
@@ -1034,9 +1016,8 @@ void StepGridComponent::paint(juce::Graphics& g)
                 // itself is far under a pixel (same reason the edit cursor
                 // needed a minimum-width clamp), so without this a point
                 // placed via Cmd+Ctrl+I was invisible, indistinguishable
-                // from empty space on the curve between its neighbors
-                // ("オートメーションポイントは点は見えるような大きさに
-                // したい"). Only drawn for points actually inside the
+                // from empty space on the curve between its neighbors.
+                // Only drawn for points actually inside the
                 // visible window -- the "just outside" ones used above
                 // purely to extend the line to the window's edge aren't
                 // real points at that on-screen position.
@@ -1131,8 +1112,7 @@ void StepGridComponent::paint(juce::Graphics& g)
             // curve type/amount Cmd+Ctrl+V/Z/X are cycling for the next
             // placement. Without this there was no way to tell which
             // shape was selected until a next point actually existed to
-            // visibly bend ("カーブのサイクルでどんなカーブが選ばれている
-            // のかよくわからない").
+            // visibly bend.
             if (isActiveLane)
             {
                 auto hasCurve = realPointAtCursor || automationPendingValue >= 0;
@@ -1162,8 +1142,7 @@ void StepGridComponent::paint(juce::Graphics& g)
         // so this deliberately skips the cursor/ghost-preview/curve-type/
         // selection machinery drawAutomationLane() above needs -- just the
         // recorded points themselves, so it's actually visible that
-        // something got recorded ("値は取れていて、再生もできるけど、
-        // レーンには何も出ない"). One lane per touched parameter, stacked
+        // something got recorded. One lane per touched parameter, stacked
         // below Pitch Bend/Filter Cutoff in the order they were first
         // touched.
         auto drawParameterLane = [&](float laneTop, const ParameterAutomationLane& lane, juce::Colour colour, bool isActiveLane, int laneIndex)
@@ -1200,9 +1179,7 @@ void StepGridComponent::paint(juce::Graphics& g)
             // automation lane like any other (see AutomationLane's
             // declaration) -- it must render curves the exact same way
             // Pitch Bend/Filter Cutoff do, not as a visually different,
-            // curve-less approximation ("プラグインからオートメーション
-            // レーンが追加された場合Curveが出てこない。別物の扱いに
-            // しないで").
+            // curve-less approximation.
             auto addShapedSegment = [&](juce::Path& path, int fromStep, float fromValue, AutomationCurveType curveType, float curveAmount, int toStep, float toValue)
             {
                 if (curveType == AutomationCurveType::Step)
@@ -1371,9 +1348,7 @@ void StepGridComponent::paint(juce::Graphics& g)
             // already had it for Pitch Bend/Filter Cutoff) -- without it
             // there was no way to tell the curve amount was actually being
             // applied at all, especially at this lane's small 24px height
-            // where a subtle bend is hard to see by eye alone
-            // ("リニアとか、文字が出てこない。カーブの強さも反映されて
-            // いるように見えない").
+            // where a subtle bend is hard to see by eye alone.
             if (isActiveLane)
             {
                 auto hasCurve = realPointAtCursor || previewValue >= 0.0f;

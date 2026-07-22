@@ -27,9 +27,8 @@ public:
     // Cmd+4 toggles this -- see MainEditorComponent::quantizeTripletMode's
     // declaration. Previously had no visible indicator at all, so it was
     // easy to leave on by accident and then be confused why '1'/'2'/'3'
-    // weren't snapping to the expected straight grid ("100％で1/8に
-    // なってしまう" -- traced to triplet mode having been left on with no
-    // way to tell).
+    // weren't snapping to the expected straight grid (traced to triplet
+    // mode having been left on with no way to tell).
     void setQuantizeTripletMode(bool isEnabled) { quantizeTripletMode = isEnabled; repaint(); }
 
     // '1'/'2'/'4' select noteRepeatGridSteps and turn this on, '5' toggles
@@ -110,8 +109,7 @@ public:
     // on edits) with the DEBOUNCED pedal state -- see its
     // pendingSustainCrossingMs's declaration -- so the badge visibly tracks
     // a real sustain pedal live, rather than only being inferable after the
-    // fact from a recorded note's length ("サスティンペダルもON/OFFを
-    // みえるようにしたい").
+    // fact from a recorded note's length.
     void setSustainPedalDown(bool isDown) { sustainPedalDown = isDown; repaint(); }
 
     void paint(juce::Graphics& g) override;
@@ -120,9 +118,8 @@ public:
     // WITHOUT clipping anything, for the given width -- wraps onto as many
     // rows as it takes rather than running off the right edge, which is
     // what used to happen once enough badges accumulated that they no
-    // longer fit in one row at any reasonable window width
-    // ("各種設定のON/OFFが画面横に広がりすぎ。折り返すか何かでいつでも
-    // 全体が見えるようにしたい"). MainEditorComponent::resized() calls
+    // longer fit in one row at any reasonable window width.
+    // MainEditorComponent::resized() calls
     // this BEFORE sizing this component (this component's own width is
     // always the full window width, decided before anything else divides
     // it up), then sizes it to exactly the height this returns, shifting

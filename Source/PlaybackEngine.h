@@ -38,8 +38,7 @@ public:
     // finishes -- lets a caller treat a note played DURING the count-in
     // (anticipating beat 1, before isPlaying() ever goes true) as if it
     // landed exactly there, instead of not being real-time-capturable at
-    // all ("リアルタイムRECの一拍目の判定が厳しすぎる。手前から入ると
-    // 一切受けてもらえないのは厳しい"). Only meaningful while
+    // all. Only meaningful while
     // isCountingIn() is true.
     int getCountInTargetStep() const { return countInPendingStartStep; }
 
@@ -83,8 +82,7 @@ public:
     // on the audio thread the next time it runs. That allocation happening
     // ON the audio thread was a real, separate stutter source that
     // persisted even after project.tracks itself stopped being a hazard
-    // (see reservedTrackCapacity's declaration) -- "再生中にトラック追加
-    // すると処理落ちする".
+    // (see reservedTrackCapacity's declaration).
     void prepareTrackAudioStates() { ensureTrackAudioStates(); }
 
     // Call once per audio block.
@@ -100,16 +98,14 @@ public:
     // message thread was tried first to make that safe, held for this
     // function's entire body -- but even briefly locking OUT the audio
     // thread on every single block turned out to itself cause audible
-    // stutter the moment a track was actually added during playback
-    // ("再生中にトラック追加すると処理落ちする"). Replaced with a much
-    // cheaper approach instead: MainEditorComponent keeps project.tracks
+    // stutter the moment a track was actually added during playback.
+    // Replaced with a much cheaper approach instead: MainEditorComponent keeps project.tracks
     // reserve()'d well beyond any realistic track count (see its
     // reservedTrackCapacity), so addTrack()'s push_back() essentially never
     // reallocates in the first place -- no lock needed here at all.
     //
     // That still wasn't the whole story -- the stutter persisted even after
-    // this fix ("まだ、再生中にトラック追加すると処理落ちする"). The
-    // remaining cause: this function used to unconditionally heap-allocate
+    // this fix. The remaining cause: this function used to unconditionally heap-allocate
     // every single block regardless of whether a track had just been added
     // (a fresh std::vector<juce::MidiBuffer>, plus a fresh scratch
     // juce::AudioBuffer per track) -- real-time audio code is never
@@ -218,10 +214,7 @@ private:
         // it also had to hold back a LATER on-transition behind it (so the
         // plugin still saw both, in order), an unrelated still-ringing
         // note could end up blocking an EARLIER, already-released note's
-        // legitimate cutoff indefinitely, well past any new pedal press
-        // ("SUSTAIN OFFの間に他のノートがONになると、SUSTAIN OFFの前に
-        // なっていたノートがOFFニナラナイ...最初のノートは踏み替えの時に
-        // 消えるべきなのに消えない").
+        // legitimate cutoff indefinitely, well past any new pedal press.
         //
         // Fixed instead by NOT deferring anything: every CC64 transition
         // (both directions) is now forwarded immediately, exactly as
@@ -275,9 +268,7 @@ private:
     // plugin instance, and that race is exactly the kind of thing that
     // can make a "reliable" All-Notes-Off/All-Sound-Off silently fail to
     // land, leaving a note stuck sounding forever on a plugin that
-    // doesn't otherwise handle Note Off cleanly ("プラグインがわがNote
-    // OFFを受けないとなりっぱなしになるタイプだと、再生して停止した時に
-    // なりっぱなしになってしまう").
+    // doesn't otherwise handle Note Off cleanly.
     std::atomic<bool> forceStopRequested { false };
     // Only ever called from renderNextBlock() -- see forceStopRequested's
     // declaration for why this can't just run inline in stop().

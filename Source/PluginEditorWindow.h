@@ -76,13 +76,10 @@ public:
     // place. Two earlier, weaker attempts both lived in
     // MainEditorComponent instead of here: reclaiming focus on a JUCE host-
     // automation gesture-end callback (only fires for plugins that
-    // cooperate with that API, most bespoke GUIs don't -- "プラグイン
-    // Windowがアクティブの時、音を鳴らすためにPCキーボードのNoteを鳴らす
-    // とここここことMacOSの音が鳴る。直ってない"), then a ~30Hz poll that
+    // cooperate with that API, most bespoke GUIs don't), then a ~30Hz poll that
     // force-reclaimed focus every tick -- which made things WORSE, not
     // better (PC-keyboard notes stopped sounding entirely while the plugin
-    // window was active, "プラグインWindowがアクティブになると、PC
-    // キーボードを鳴らしてもならなくなった"), almost certainly because
+    // window was active), almost certainly because
     // repeatedly forcing OS window-activation back and forth many times a
     // second raced whatever key-state tracking
     // juce::KeyPress::isKeyCurrentlyDown() relies on. Preventing the

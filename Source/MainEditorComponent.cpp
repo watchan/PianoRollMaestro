@@ -122,10 +122,8 @@ void MainEditorComponent::applyStepEdit(int trackIndex, const std::vector<Step>&
     // genuine vector reallocation; re-assigning IDENTICAL content isn't
     // one, and doing it anyway was needlessly cutting off whatever else was
     // still sounding on every single commit made during playback -- not
-    // just this specific edit, but the underlying cause behind "再生中に
-    // ノートを動かした時に、鳴っていたノートが止まってしまう" generally,
-    // most recently reported as "ベロシティ変更の時にノートを鳴らすとき、
-    // Playの音は途切れないように". Genuine undo()/redo() NAVIGATION still
+    // just this specific edit, but the underlying cause behind that class
+    // of bug generally. Genuine undo()/redo() NAVIGATION still
     // takes the dance below normally, since those really do swap in
     // different content than what's currently live.
     if (clip.steps == steps && clip.sustainPedalEvents == sustainPedalEvents
@@ -251,8 +249,7 @@ MainEditorComponent::MainEditorComponent()
             // momentary, CC64=0 "pedal up" messages, and at least one
             // instrument responded by releasing notes that were still
             // being genuinely held (finger still down, never actually
-            // note-off'd) rather than only the ones it was sustaining over
-            // ("ノートON中のサスティンOFFでノートまでOFFになって聞こえる").
+            // note-off'd) rather than only the ones it was sustaining over.
             // Only resolvePendingSustainCrossing() actually forwards to the
             // synth or records, once the settle window confirms the value.
             auto rawDown = message.getControllerValue() > 0;
@@ -301,8 +298,7 @@ MainEditorComponent::MainEditorComponent()
     // left-to-right with juce::Rectangle::removeFromLeft(), which just
     // silently clips to zero width once the row runs out of room rather
     // than erroring, so a too-narrow window doesn't fail loudly, it just
-    // makes the newest/rightmost badges invisible
-    // ("TOUCHのON/OFFが表示されていなくてわからない").
+    // makes the newest/rightmost badges invisible.
     setSize(1700, 700);
 
     // Output+MIDI manager (inherited deviceManager): output-only, no audio
@@ -425,10 +421,9 @@ void MainEditorComponent::timerCallback()
     transportBar.setPlaying(playbackEngine.isPlaying());
     // Debounced state (see pendingSustainCrossingMs's declaration) -- pushed
     // every tick, same as playing/countingIn above, so the badge visibly
-    // tracks a real pedal live instead of only updating on the next edit
-    // ("サスティンペダルもON/OFFをみえるようにしたい" -- there was
-    // otherwise no way to SEE whether a press/jitter was actually being
-    // recognized, only to infer it after the fact from a note's length).
+    // tracks a real pedal live instead of only updating on the next edit --
+    // there was otherwise no way to SEE whether a press/jitter was actually
+    // being recognized, only to infer it after the fact from a note's length.
     transportBar.setSustainPedalDown(midiSustainPedalDown);
 
     // Auto-clear a forgotten pendingChord ~pendingChordTimeoutMs after it
@@ -478,9 +473,7 @@ void MainEditorComponent::timerCallback()
     // released (but the whole gesture hasn't ended -- some OTHER pitch is
     // still held, see handleMidiNoteChange()'s mid-gesture flush) freezes
     // exactly at its own measured end instead of continuing to visually
-    // stretch alongside whatever's still held ("Realtime RECの入力時の
-    // ノートが伸びていく時...一度ノートOFFになったらその時点でノートの
-    // 入力が止まるようにアニメーション表示でも示してほしい").
+    // stretch alongside whatever's still held.
     if (realtimeRecordStep >= 0)
     {
         std::vector<StepGridComponent::LiveRecordingPreviewNote> previewNotes;
@@ -627,10 +620,9 @@ void MainEditorComponent::adjustVirtualKeyboardVelocity(float delta)
     // Also nudge the velocity of whichever note(s) are currently selected
     // in the piano roll (same targeting adjustNotePitch()'s T/G uses --
     // effectiveSelectedNoteStarts()/effectiveSelectedPitches()), and play
-    // the result back immediately so the change is audible ("ベロシティを
-    // 変更したら、選択中のノートのベロシティを変更した上でそのノートを
-    // 鳴らして"). No-op beyond the global preset above when there's
-    // nothing to target (Session View, or no note under the cursor).
+    // the result back immediately so the change is audible. No-op beyond
+    // the global preset above when there's nothing to target (Session
+    // View, or no note under the cursor).
     if (currentViewMode == ViewMode::PianoRoll)
     {
         auto& steps = project.tracks[(size_t) cursorTrackIndex].clip.steps;
@@ -847,8 +839,7 @@ void MainEditorComponent::toggleKeyboardOverlay()
         // freshly-created native window key/frontmost at the OS level even
         // without an explicit toFront(true) call -- reclaim focus for the
         // main editor the same way updatePluginEditorWindowVisibility()
-        // does for the plugin editor window ("Cmd Kで新しいWindowを出しても
-        // そちらをアクティブにしない").
+        // does for the plugin editor window.
         grabKeyboardFocus();
         return;
     }
@@ -936,8 +927,7 @@ void MainEditorComponent::audioProcessorParameterChangeGestureBegin(juce::AudioP
     // recordParameterAutomationPoint()) or Manual-mode preview (stopped,
     // previewTouchedParameterValue()). Previously gated on
     // playbackEngine.isPlaying() too, which silently dropped every touch
-    // made while stopped ("Touchでオートメーションを書くとき、MANUALでも
-    // 書けるようにしたい").
+    // made while stopped.
     if (!automationTouchModeEnabled)
         return;
     auto trackIndex = findTrackIndexForProcessor(processor);
@@ -969,9 +959,8 @@ void MainEditorComponent::audioProcessorParameterChangeGestureEnd(juce::AudioPro
     // updatePluginEditorWindowVisibility()'s declaration). Left
     // unaddressed, every PC-keyboard note/shortcut key pressed while that
     // focus is still sitting on the plugin window went to the plugin (or
-    // nowhere) instead of this editor, and macOS beeped for each one
-    // ("プラグインWindowを触っているときに、PCキーボードでNoteを押すと
-    // こここことmacOSからなってしまう"). Reclaiming focus the instant the
+    // nowhere) instead of this editor, and macOS beeped for each one.
+    // Reclaiming focus the instant the
     // gesture ends (mouse released) -- not on every parameter-changed
     // callback mid-drag, which would fight the plugin's own window for
     // focus while the user is still actively dragging -- restores normal
@@ -1002,8 +991,7 @@ void MainEditorComponent::audioProcessorParameterChanged(juce::AudioProcessor* p
     // (a macro knob, say) while the OTHER parameters it drives internally
     // just get plain parameterChanged calls with no gesture wrapper of
     // their own. Gating per-exact-index silently dropped every one of
-    // those side-effect changes ("プラグインから同時に複数のパラメータが
-    // 変更される場合は、変更される全ての点を動かす") -- gating per-track
+    // those side-effect changes -- gating per-track
     // instead still filters out genuinely unrelated changes (preset load,
     // internal LFO) whenever NOTHING is being touched at all, while
     // catching every parameter that moves alongside whatever specific one
@@ -1082,8 +1070,7 @@ void MainEditorComponent::recordParameterAutomationPoint(int trackIndex, juce::A
     // since Touch capture isn't a keypress and so never goes through
     // trigger()/setLastAction() any other way. Console log too, so the
     // exact recorded value/step/lane-created-or-not can be checked
-    // against what was actually done with the knob
-    // ("具体的に入力された値がきちんとレーンに入っているかは確認が必要").
+    // against what was actually done with the knob.
     shortcutHelpBar.setLastAction("Touch: " + laneIt->parameterName + " = " + juce::String(value, 3)
         + (isNewLane ? " (new lane)" : ""));
     DBG("Parameter automation recorded: track " << trackIndex << " \"" << laneIt->parameterName << "\" ("
@@ -1235,9 +1222,7 @@ int MainEditorComponent::realtimeOnsetStep() const
         // already reset to loopStartStep. A note landing there reads like
         // "beat 5 of a 4-beat loop" -- there's no such beat, it's actually
         // beat 1 of the next lap, so it belongs at loopStartStep too, the
-        // same as a note anticipated slightly before the boundary
-        // ("１小節を繰り返しながらリアルタイムRecした時、5拍目の頭に
-        // きたものは1拍目の頭に持ってくるようにしたい").
+        // same as a note anticipated slightly before the boundary.
         if (rawStep >= project.loopEndStep - tolerance && rawStep < project.loopEndStep + tolerance)
             return project.loopStartStep;
     }
@@ -1287,8 +1272,7 @@ void MainEditorComponent::handleMidiNoteChange(int noteNumber, float velocity, b
             }
             // A note struck DURING the count-in (anticipating beat 1, before
             // isPlaying() ever goes true -- see isCountingIn()'s declaration)
-            // is otherwise not real-time-capturable at all ("リアルタイムRECの
-            // 一拍目の判定が厳しすぎる。手前から入ると一切受けてもらえない").
+            // is otherwise not real-time-capturable at all.
             // getCountInTargetStep() is exactly the step real playback is
             // about to resume at, so treat an anticipated beat-1 note as if
             // it landed there.
@@ -1356,12 +1340,10 @@ void MainEditorComponent::handleMidiNoteChange(int noteNumber, float velocity, b
         // regardless of how long each key was actually held. This was
         // briefly made unconditional (every REC mode) to fix two different
         // pitches struck together but released at different times sharing
-        // one flat duration in Real-time REC ("ピッチの違うノート同士で
-        // なぜかDurationが引っ張られてしまう") -- but that meant Step REC's
+        // one flat duration in Real-time REC -- but that meant Step REC's
         // own notes started carrying real key-hold timing too, silently
         // overriding the duration preset any time a key wasn't held for
-        // exactly that long ("ステップRecの時のDurationがなぜかリアルタイム
-        // になっている。指定した音価にしたい"). Step REC's whole paradigm
+        // exactly that long. Step REC's whole paradigm
         // is "the written length is whatever the grid preset says,
         // regardless of gesture" -- there's no real timing to preserve
         // there in the first place, so the fix only ever needed to apply
@@ -1396,8 +1378,7 @@ void MainEditorComponent::handleMidiNoteChange(int noteNumber, float velocity, b
         // natural with the sustain pedal held) can otherwise keep at
         // least one note physically down for an entire passage, meaning
         // heldMidiNotes never empties and NOTHING gets written until the
-        // whole passage finally ends ("弾いている時、Recしているときは
-        // サスティンが効いているが、実際にはRecされない" -- the pedal
+        // whole passage finally ends -- the pedal
         // itself wasn't actually the bug; it just makes overlapping/
         // legato playing far more likely, which is what actually starves
         // the old "wait for full silence" auto-commit below). Notes that
@@ -1461,7 +1442,7 @@ void MainEditorComponent::handleMidiNoteChange(int noteNumber, float velocity, b
                 // written uniformly at realtimeRecordStep, so a note played
                 // partway through a still-held chord lands at the step it
                 // was actually played at instead of aligning to the first
-                // note ("後から入れたNoteの頭が、最初のNoteに合ってしまう").
+                // note.
                 std::map<int, std::vector<StepNote>> notesByOnset;
                 for (auto& n : pendingChord)
                 {
@@ -1473,9 +1454,7 @@ void MainEditorComponent::handleMidiNoteChange(int noteNumber, float velocity, b
                 // next (raw human timing is the whole point of this mode),
                 // so leave every note just written selected -- a following
                 // '1'/'2'/'3' or Cmd+A-style bulk action needs no separate
-                // selection step first ("realtime Rec後は入力されたノートが
-                // 全て選択された状態にする(この後クオンタイズなどの処理を
-                // する可能性が高いため)"). commitPendingNoteAt() always
+                // selection step first. commitPendingNoteAt() always
                 // writes/merges exactly at targetStep, so onsetStep is
                 // always the resulting note's actual owning step index.
                 // NOT cleared here -- the per-note-release commit above may
@@ -1613,9 +1592,8 @@ void MainEditorComponent::recordSustainPedalEvent(bool pedalDown)
     // recMode==Realtime here; it just happened to inherit that check from
     // being written alongside note capture originally. Relaxed to match
     // the equally permissive plugin-parameter Touch capture (see
-    // MainEditorComponent::audioProcessorParameterChangeGestureBegin())
-    // ("Realtime Recじゃなくてもレーンのオートメーションに値を反映
-    // させて欲しい"). Live audio preview (the playbackEngine.liveMidiMessage()
+    // MainEditorComponent::audioProcessorParameterChangeGestureBegin()).
+    // Live audio preview (the playbackEngine.liveMidiMessage()
     // calls in onLiveControllerMessage/pollVirtualKeyboardInput) reflects
     // the pedal regardless of REC state either way; this only controls
     // whether anything gets written into the clip.
@@ -1664,7 +1642,7 @@ void MainEditorComponent::recordSustainPedalEvent(bool pedalDown)
     // clip's start up to that release would read back as "pedal was never
     // down at all" both in playback and the piano roll's sustain lane,
     // silently dropping sustain on exactly the opening notes it was meant
-    // to cover ("ど頭の一拍目はサス亭聞くべきところなのに聞かない").
+    // to cover.
     // Backfilling an implicit press at step 0 is safe only when this is
     // the very first event ever recorded for this clip (nothing earlier
     // to conflict with) AND this release isn't itself exactly at step 0
@@ -1828,8 +1806,7 @@ void MainEditorComponent::adjustAutomationPendingValue(int direction, bool coars
     auto maxValue = automationEditLane == AutomationLane::PitchBend ? 16383 : 127;
     // Coarse (Shift+T/G) step doubled from its original size at the
     // user's request -- it felt too small to cover the lane's range in a
-    // reasonable number of presses ("オートメーションポイントの上下、
-    // Shift±T,Gはもう少し大きく動いても良い"). Fine (plain t/g) unchanged.
+    // reasonable number of presses. Fine (plain t/g) unchanged.
     auto delta = automationEditLane == AutomationLane::PitchBend
         ? (coarse ? 2048 : 128) * direction
         : (coarse ? 16 : 1) * direction;
@@ -1851,9 +1828,7 @@ void MainEditorComponent::adjustAutomationPendingValue(int direction, bool coars
     {
         // Single point (or none) at the cursor: adjusts the shared "what
         // Ctrl+V/Cmd+Ctrl+I will place next" pending value instead, moving
-        // that one existing point to match right away if there is one
-        // ("Ctrl Cmd Z, Xはすぐにその場にInsert済みの点を動かして反映
-        // させたい").
+        // that one existing point to match right away if there is one.
         auto& pendingValue = automationEditLane == AutomationLane::PitchBend ? pitchBendPendingValue : filterCutoffPendingValue;
         pendingValue = juce::jlimit(minValue, maxValue, pendingValue + delta);
         for (auto& p : points)
@@ -1911,9 +1886,8 @@ void MainEditorComponent::insertAutomationPointAtCursor()
             // preview value at once, not just the Cmd+Ctrl+L-selected lane
             // -- see touchPreviewValues' declaration (a single physical
             // touch can drive several plugin parameters simultaneously,
-            // and all of their points should land together, "プラグイン
-            // から同時に複数のパラメータが変更される場合は、変更される
-            // 全ての点を動かす。レーンの外にあるパラメータも動かす").
+            // and all of their points, even ones outside the currently
+            // selected lane, should land together).
             for (auto& [key, value] : touchPreviewValues)
             {
                 auto [touchedTrackIndex, laneIndex] = key;
@@ -1934,9 +1908,8 @@ void MainEditorComponent::insertAutomationPointAtCursor()
             // the cursor with c/v to a completely different spot and
             // committing there kept re-writing the SAME whole group of
             // parameters at the new spot as well, even when only one of
-            // them was actually meant to move there
-            // ("一括して打てるけど、その後もcvでセットで動いてしまうのは
-            // なぜ？"). Any parameter still being actively touched right
+            // them was actually meant to move there. Any parameter still
+            // being actively touched right
             // now re-populates its own entry immediately on its very next
             // audioProcessorParameterChanged() call, so an in-progress
             // gesture isn't affected by this.
@@ -1979,8 +1952,7 @@ void MainEditorComponent::deleteAutomationPointAtCursor()
     // Deletes every point/event in effectiveSelectedAutomationSteps() (a
     // Shift+D/F multi-selection if one exists, else just the one at the
     // cursor) -- mirrors clearCurrentStep() acting on
-    // effectiveSelectedNoteStarts() ("複数選択+一括操作...揃えられる
-    // ところは揃えたい").
+    // effectiveSelectedNoteStarts().
     auto targets = effectiveSelectedAutomationSteps();
     if (automationEditLane == AutomationLane::Sustain)
     {
@@ -2009,8 +1981,7 @@ void MainEditorComponent::deleteAutomationPointAtCursor()
     multiSelectedAutomationSteps.clear(); // its points are gone -- nothing left to point at
 
     // Matches clearCurrentStep()'s own "select nearest note" fallback --
-    // see its declaration ("点のクリアや、クリアされて点がなくなった時の
-    // 挙動は、ノートのクリアと合わせる"): jump to the nearest PRECEDING
+    // see its declaration: jump to the nearest PRECEDING
     // point/event if the cursor now has none of its own lane exactly under
     // it, else the nearest FOLLOWING one, else back to bar 1 if the lane
     // is empty entirely -- rather than leaving the cursor stranded with
@@ -2473,9 +2444,8 @@ void MainEditorComponent::moveCursor(int deltaSteps)
     // which stayed silently true if the cursor later moved away and back to
     // the exact same step index, re-applying a stale narrowing from a
     // completely unrelated earlier visit and making a fresh landing on that
-    // chord act as if only the one previously-narrowed note existed
-    // ("あるタイミングで和音が存在していて、ロケータがそこにきても、最後に
-    // Noteを動かしたノートしか選択されない"). Any actual cursor movement now
+    // chord act as if only the one previously-narrowed note existed.
+    // Any actual cursor movement now
     // unconditionally invalidates it, so returning to a chord always starts
     // fresh (whole chord) unless explicitly re-narrowed.
     noteSelectionAnchorStep = -1;
@@ -2580,13 +2550,11 @@ void MainEditorComponent::moveCursorByNoteOrStep(int direction, bool fallbackToS
     }
     else if (!fallbackToStep)
     {
-        // Cursor is on a genuine rest, not on/within any note ("何も選択
-        // されていない時") -- plain d/f used to simply no-op here. Instead,
+        // Cursor is on a genuine rest, not on/within any note -- plain d/f
+        // used to simply no-op here. Instead,
         // jump to the nearest note: search in the pressed key's own
         // direction first, and if that side has nothing, fall back to the
-        // opposite direction rather than doing nothing at all ("最寄りの
-        // Noteを選択、左に何もなければ次のノート、次のノートが何もなければ
-        // 前のノート").
+        // opposite direction rather than doing nothing at all.
         auto searchForward = [&steps](int start) -> int
         {
             for (int i = juce::jmax(0, start); i < (int) steps.size(); ++i)
@@ -2624,9 +2592,8 @@ void MainEditorComponent::moveCursorByNoteOrStep(int direction, bool fallbackToS
     // boundary -- e.g. stepping back by one beat from a rest just past a
     // longer chord -- snap straight to that note's own head instead of
     // stranding the cursor mid-note, so a single D press lands squarely on
-    // the chord rather than requiring a second press to actually reach it
-    // ("Dで戻る時に、和音の上に乗っても、和音の先頭まで移動しない。
-    // なぜか一拍分で止まってしまう"). Inlines moveCursor()'s own clamp/
+    // the chord rather than requiring a second press to actually reach it.
+    // Inlines moveCursor()'s own clamp/
     // refresh/audition rather than calling it and re-snapping afterward,
     // so this only ever triggers one audition, not two.
     auto rawTarget = juce::jmax(0, cursorStepIndex + direction * commitDurationPresets[(size_t) commitDurationPresetIndex]);
@@ -2654,9 +2621,7 @@ void MainEditorComponent::handleForwardKey()
 
     // Pure note-to-note navigation, never commits -- committing lives on
     // Ctrl+V (see commitPendingNoteManually()). Duration-preset-only
-    // movement is 'c'/'v' instead (retreatByDuration()/advanceByDuration())
-    // ("Dfはノート単位で動く、B Vが指定した音価単位で動くにする"
-    // originally, "vbはcvに移動する" since).
+    // movement is 'c'/'v' instead (retreatByDuration()/advanceByDuration()).
     moveCursorByNoteOrStep(1, false);
 }
 
@@ -2711,11 +2676,11 @@ void MainEditorComponent::addTrack()
     // it WON'T reallocate. project.tracks is kept reserve()'d well beyond
     // any realistic track count (see reservedTrackCapacity's declaration)
     // specifically so this stays a plain push_back(), no locking needed at
-    // all ("トラック追加でPlay止めない"). A CriticalSection shared with the
+    // all. A CriticalSection shared with the
     // audio thread was tried first instead, but even briefly locking OUT
     // the audio thread on every single block turned out to itself cause
-    // audible stutter when a track was actually added during playback
-    // ("再生中にトラック追加すると処理落ちする") -- reserving ahead of time
+    // audible stutter when a track was actually added during playback --
+    // reserving ahead of time
     // avoids the need for any lock in the first place. Only in the
     // essentially-never-hit case where reservedTrackCapacity has actually
     // been exhausted does this fall back to the plain stop-first behavior
@@ -2731,7 +2696,7 @@ void MainEditorComponent::addTrack()
     // build it on the audio thread the next time it runs -- that
     // allocation happening ON the audio thread was a separate stutter
     // source that persisted even after project.tracks itself stopped being
-    // a hazard above ("まだ、再生中にトラック追加すると処理落ちする"). See
+    // a hazard above. See
     // PlaybackEngine::prepareTrackAudioStates()'s declaration.
     playbackEngine.prepareTrackAudioStates();
 
@@ -2743,9 +2708,8 @@ void MainEditorComponent::addTrack()
     // track is currently being viewed, and the new track's own cursor
     // legitimately starts at step 0 of a totally blank grid, even though
     // every OTHER track (and the transport's actual sample position) just
-    // keeps playing on completely undisturbed
-    // ("再生が最初からになってしまうのは避けられない？トラックを追加しても
-    // 再生を継続したい"). So only auto-switch while stopped; while playing,
+    // keeps playing on completely undisturbed.
+    // So only auto-switch while stopped; while playing,
     // leave the current view alone and just add the track quietly in the
     // background -- switch to it manually (`3`/`e` or Cmd+Ctrl+P/N)
     // whenever you're ready to start writing into it.
@@ -2772,7 +2736,7 @@ void MainEditorComponent::retreatByDuration()
     // Backward twin of advanceByDuration() -- see its comment. Plain 'v'
     // (both views), pairing with 'b' (Piano Roll only; Session View's 'b'
     // stays Duplicate Clip) now that d/f moved back to pure note-jumping
-    // instead ("Dfはノート単位で動く、B Vが指定した音価単位で動くにする").
+    // instead.
     moveCursor(-commitDurationPresets[(size_t) commitDurationPresetIndex]);
 }
 
@@ -2826,8 +2790,7 @@ void MainEditorComponent::clearCurrentStep()
     // of those notes gets cleared too -- previously this only ever looked
     // at cursorStepIndex, so clearing after a multi-note selection only
     // ever removed whichever single note the cursor happened to land on
-    // last ("Shift + D/Fで複数タイミングのノートを選択した状態で、aを押し
-    // ても、最後のノートしか消えない").
+    // last.
     auto targetStarts = effectiveSelectedNoteStarts();
 
     if (!targetStarts.empty())
@@ -2864,7 +2827,7 @@ void MainEditorComponent::clearCurrentStep()
             // removed either, since trimTrailingEmptySteps() deliberately
             // leaves tiedFromPrevious steps alone (correct for a real
             // note's sustain, wrong once its root is gone). That's the
-            // "ゴミ" -- garbage nothing cleaned up.
+            // garbage nothing cleaned up.
             if (ownerNotes.empty())
                 deleteWholeNoteAt(stepIndex);
         }
@@ -2890,14 +2853,12 @@ void MainEditorComponent::clearCurrentStep()
     // If the cursor now has nothing left under it at all, select the
     // nearest PRECEDING note instead of leaving nothing targetable --
     // otherwise the next command (another 'a', a pitch nudge, quantize,
-    // copy...) would silently have nothing to act on ("AでClearした後
-    // ロケータにノートが何も無くなったら手前のノートを選択状態にする").
+    // copy...) would silently have nothing to act on.
     // If there's no preceding note either, fall forward to the nearest
     // FOLLOWING note instead; if there's nothing at all anywhere, there's
     // nothing left to select, so send the locator back to bar 1 rather
-    // than leaving it stranded wherever the last note used to be
-    // ("手前にノートが何も無くなったら次のノートを選択状態にする。
-    // 何もなければロケータを1小節目に戻す"). Re-fetches steps fresh --
+    // than leaving it stranded wherever the last note used to be.
+    // Re-fetches steps fresh --
     // deleteWholeNoteAt() above may have grown (reallocated) the vector
     // via ensureStepExists().
     auto& stepsAfterClear = project.tracks[(size_t) cursorTrackIndex].clip.steps;
@@ -2910,8 +2871,7 @@ void MainEditorComponent::clearCurrentStep()
         // after a multi-note Shift+D/F selection was built and the cursor
         // then moved further via some other navigation command without
         // clearing the selection), and indexing from an unclamped
-        // cursorStepIndex - 1 crashed with an out-of-bounds vector access
-        // ("たくさん選択してAでクリアしたらエラーで強制終了した").
+        // cursorStepIndex - 1 crashed with an out-of-bounds vector access.
         for (int i = juce::jmin(cursorStepIndex - 1, (int) stepsAfterClear.size() - 1); i >= 0; --i)
         {
             if (!stepsAfterClear[(size_t) i].tiedFromPrevious && !stepsAfterClear[(size_t) i].notes.empty())
@@ -2940,9 +2900,7 @@ void MainEditorComponent::clearCurrentStep()
             // StepGridComponent::getFirstVisibleStep()), the same way d/f
             // moving between notes does. Leaving cursorStepIndex parked at
             // the now-cleared position left the newly-selected note
-            // unfollowed by the view ("aでクリアした時に画面遷移がついて
-            // こなくなるので、ロケータを追いかけるd fの動作と同じように
-            // 追従して欲しい").
+            // unfollowed by the view.
             cursorStepIndex = foundIndex;
             multiSelectedNoteStarts = { foundIndex };
         }
@@ -3000,8 +2958,7 @@ void MainEditorComponent::auditionNoteAtCursor()
     // to be conditional (edits like adjustNotePitch()/tieCurrentStep()
     // still audible mid-playback, navigation suppressed), but that
     // distinction was dropped -- moved notes should stay silent during
-    // playback too ("そこは指示を変えます" -- reverses "ただし、再生中
-    // でも動かしたノートは鳴らして良い" from earlier in this session).
+    // playback too.
     if (playbackEngine.isPlaying())
         return;
 
@@ -3058,8 +3015,7 @@ void MainEditorComponent::adjustNotePitch(int deltaSemitones)
     // built, every one of those notes moves together too -- previously this
     // only ever looked at cursorStepIndex, so transposing after a
     // multi-note selection silently did nothing to the rest of the
-    // selection ("複数のノートを選択した後で半音上げ下げしても全体には
-    // 効かない").
+    // selection.
     auto targetStarts = effectiveSelectedNoteStarts();
     // effectiveSelectedNoteStarts()/multiSelectedNoteStarts store the note's
     // ROOT step index (findOwningNoteStepIndex()'s result), but cursorStepIndex
@@ -3070,22 +3026,20 @@ void MainEditorComponent::adjustNotePitch(int deltaSemitones)
     // narrowed within-chord pitch selection got silently ignored (falling
     // back to "every note in the chord") any time the cursor was parked on
     // a tie's tail -- occasionally sending an unintended note into a real
-    // collision with something elsewhere ("タイで伸ばしたノートについて、
-    // 終端の方で触れた状態の時...T、GでNote選択を動かしても...", and the
-    // resulting "まだ消えてしまう").
+    // collision with something elsewhere.
     auto cursorOwnerIndex = findOwningNoteStepIndex(steps, cursorStepIndex);
 
     // Remembers where the cursor's own chord ends up, so the view can
     // follow it below -- pitch shifted this data correctly the whole time,
     // but the piano roll's visible pitch WINDOW never followed along, so a
     // note transposed far enough scrolled off-screen and looked exactly
-    // like it had vanished even though it hadn't ("ノートが消える問題変わ
-    // ってない" persisting after every data-level fix). Tracks the LOWEST
+    // like it had vanished even though it hadn't -- the same "note
+    // disappeared" symptom persisting after every data-level fix. Tracks
+    // the LOWEST
     // and HIGHEST shifted pitch, not just one arbitrary note -- centering
     // on a single note (the first version of this fix) could scroll a
     // WIDE chord's other, correctly-moved notes off the opposite edge of
-    // the view, which looked exactly like "only some notes followed"
-    // ("半音上げ下げしても、一部のノートしかついてこない").
+    // the view, which looked exactly like "only some notes followed".
     auto cursorChordLowestPitch = -1;
     auto cursorChordHighestPitch = -1;
 
@@ -3118,11 +3072,9 @@ void MainEditorComponent::adjustNotePitch(int deltaSemitones)
         // chord-mate at the same pitch. Without this, a plain membership
         // test matched BOTH notes the instant they shared a pitch value,
         // so they moved together from then on and could never separate
-        // again on a later press -- the actual bug behind "半音上げ下げで
-        // ノートがぶつかるとノートが消える問題がずっと治ってない" (it
-        // wasn't that a note was deleted; two notes got permanently welded
-        // together by an identity mix-up, which looked the same in the
-        // piano roll as one note vanishing).
+        // again on a later press -- it wasn't that a note was deleted; two
+        // notes got permanently welded together by an identity mix-up,
+        // which looked the same in the piano roll as one note vanishing.
         std::map<int, int> remainingSelectedCount;
         for (auto pitch : selected)
             ++remainingSelectedCount[pitch];
@@ -3136,10 +3088,11 @@ void MainEditorComponent::adjustNotePitch(int deltaSemitones)
         // overlap immediately (erasing whichever note collided, then later
         // blocking the move entirely) -- both still ended up "eating" a
         // note or permanently jamming it against its neighbor, which is
-        // exactly the "玉突き" (billiards-chain) behavior the user
-        // rejected: "一度は重なって2つのノートが1つになったように見えて
-        // いい。ただ、さらに動かすとやはり1つに見えたノートは2つに戻る
-        // ようにしたい。今の挙動は玉突き状態で、意図したものでない". The
+        // exactly the "billiards-chain" behavior the user rejected: two
+        // notes are allowed to visually merge into one when they land on
+        // the same pitch, but a further move must be able to separate them
+        // back into two again, rather than leaving them permanently
+        // chained together. The
         // only thing still blocked is going out of the valid MIDI range
         // (0-127) -- clamping there would permanently merge a note with
         // whatever else piled up at the boundary and lose the original gap
@@ -3320,8 +3273,8 @@ void MainEditorComponent::extendNoteSelection(int direction)
     // On the very first Shift+D/F press of a gesture, seed the selection
     // with the note the cursor was already sitting on -- previously only
     // the note the cursor moved TO got added, so the note where Shift
-    // started was silently left out of every extend
-    // ("Shiftを押し始めた最初のノートが選択されない"). Looked up BEFORE the
+    // started was silently left out of every extend.
+    // Looked up BEFORE the
     // move using its own reference, since moveCursorByNoteOrStep() below can
     // grow clip.steps (invalidating any reference taken before it).
     if (multiSelectedNoteStarts.empty())
@@ -3392,12 +3345,9 @@ void MainEditorComponent::moveNoteTo(int fromIndex, int toIndex)
     // that earlier note's own start instead of its actual computed target,
     // e.g. quantizing a note to a grid line that happened to fall within a
     // longer, unrelated note's sustain silently folded it into that note's
-    // chord instead of landing independently
-    // ("0.1拍、0.6拍があって、0.6拍単一で1/8 Qかけたら0.1拍のところまで
-    // 来てしまう"). Exactly the same bug commitPendingNoteAt() already had
-    // fixed for live input ("Realtime Recの時、元々長い音価のノートが
-    // あると、違うピッチのノートが置けない") -- this is the same fix,
-    // applied here too. That case now falls through to the fresh-write
+    // chord instead of landing independently. Exactly the same bug
+    // commitPendingNoteAt() already had fixed for live input -- this is
+    // the same fix, applied here too. That case now falls through to the fresh-write
     // branch below, same as landing on a genuine rest.
     if (existingOwner == toIndex)
     {
@@ -3413,8 +3363,7 @@ void MainEditorComponent::moveNoteTo(int fromIndex, int toIndex)
         // (see its own comment), and quantizing/unquantizing several notes
         // onto the same target step was one of the ways such a duplicate
         // could get created in the first place (not created here, but
-        // silently allowed to happen -- "わおんの半音上げ下げでNote消える
-        // 問題が解消していない", traced back to this merge never having
+        // silently allowed to happen, traced back to this merge never having
         // checked for it).
         auto& targetNotes = steps2[(size_t) existingOwner].notes;
         for (auto& n : movedRoot.notes)
@@ -3434,8 +3383,7 @@ void MainEditorComponent::moveNoteTo(int fromIndex, int toIndex)
         // Previously this unconditionally overwrote every step in the
         // chain's span regardless of what was already in it, silently
         // destroying whatever unrelated note (or another note's tied
-        // continuation) happened to already be there ("ノート動かしたら
-        // 消える").
+        // continuation) happened to already be there.
         for (int i = 0; i < (int) tieChain.size(); ++i)
         {
             auto idx = toIndex + 1 + i;
@@ -3483,9 +3431,7 @@ void MainEditorComponent::quantizeSelectedNotesImpl(int gridSteps)
         // raw (as-played) position, never from wherever a previous quantize
         // pass already rounded it to -- otherwise quantizing to 1/8 and then
         // re-quantizing to 1/16 would snap the already-rounded 1/8 position
-        // instead of the real original timing ("クオンタイズは常に
-        // オリジナルのノートをベースに比較する。1/8してから1/16したら、
-        // 丸めてしまう前のオリジナルのノートで1/16にすること"). This is
+        // instead of the real original timing. This is
         // also what lets '5' restore the true as-played timing no matter
         // how many times it's been re-quantized in between.
         auto originalStep = steps[(size_t) rawIndex].quantizedFromStep >= 0
@@ -3657,8 +3603,7 @@ void MainEditorComponent::updateNoteRepeat()
         // sync with the rest of the song/tempo (and follows a live tempo
         // change instantly, since it's driven by the transport's own
         // already-tempo-aware step advancement) rather than an
-        // independently-phased, merely tempo-RATED timer
-        // ("NoteRepeatはテンポと同期する").
+        // independently-phased, merely tempo-RATED timer.
         auto currentStep = playbackEngine.getTrackPlaybackStep(cursorTrackIndex);
         if (currentStep >= 0)
         {
@@ -3841,7 +3786,7 @@ void MainEditorComponent::tieCurrentStep()
     // originally entered, see StepNote::durationSteps) would otherwise
     // still cap playback at the OLD, shorter length even after the tie
     // chain above extends the container, making Tie look like it silently
-    // does nothing audibly ("タイが機能しなくなった"). Clearing it falls
+    // does nothing audibly. Clearing it falls
     // back to the tie-chain envelope (now correctly extended) instead.
     for (auto& n : project.tracks[(size_t) cursorTrackIndex].clip.steps[(size_t) ownerIndex].notes)
         n.durationSteps = -1;
@@ -3888,7 +3833,7 @@ void MainEditorComponent::setClipEndHere()
     // again at the position that's ALREADY the clip end also clears it,
     // instead of just re-setting it to the same value -- previously the
     // only way to clear an established marker was moving the cursor all
-    // the way back to step 0 first ("バックログのもう一度押すと解除も").
+    // the way back to step 0 first.
     auto& clip = project.tracks[(size_t) cursorTrackIndex].clip;
     clip.explicitLengthInSteps = (cursorStepIndex != 0 && cursorStepIndex == clip.explicitLengthInSteps)
         ? 0
@@ -4119,9 +4064,7 @@ void MainEditorComponent::commitPendingNoteAt(int targetStep, int fallbackDurati
     // pendingChordIdleSinceMs's declaration) -- keeps pendingChord alive
     // indefinitely as long as it keeps getting re-committed (e.g. 'f'
     // pressed repeatedly to repeat the same chord), only actually expiring
-    // after a full pendingChordTimeoutMs with no commit at all ("一度
-    // コミットしたら時間をリセットして維持する。コミットされない時間が
-    // 経つと消える").
+    // after a full pendingChordTimeoutMs with no commit at all.
     pendingChordIdleSinceMs = juce::Time::getMillisecondCounterHiRes();
     stepGrid.setPreviewAlpha(1.0f); // cancel any fade-out already in progress
 
@@ -4151,15 +4094,13 @@ void MainEditorComponent::commitPendingNoteAt(int targetStep, int fallbackDurati
         // the same shifted pitch) is exactly what later made
         // adjustNotePitch() collapse a note that looked fine in the piano
         // roll (two identical-pitch notes render as one overlapping block)
-        // the next time the chord was semitone-shifted ("わおんの半音上げ
-        // 下げでNote消える問題が解消していない"). Deliberately NOT
+        // the next time the chord was semitone-shifted. Deliberately NOT
         // triggered by landing inside an EARLIER note's tied continuation
         // (ownerIndex >= 0 but != targetStep) -- that used to merge here
         // too, which silently relocated a real-time-REC'd note back to the
         // earlier note's own start instead of where it was actually
         // played, making it look like the new pitch couldn't be placed at
-        // all while a long note was still sounding ("Realtime Recの時、
-        // 元々長い音価のノートがあると、違うピッチのノートが置けない").
+        // all while a long note was still sounding.
         // That case now falls through to the fresh-write branch below,
         // same as landing on a genuine rest.
         auto& ownerNotes = steps[(size_t) ownerIndex].notes;
@@ -4303,8 +4244,7 @@ void MainEditorComponent::refreshChildViews()
     // value of its own -- see touchPreviewValues' declaration. Shown
     // regardless of automationEditModeActive/which lane is selected, so a
     // multi-parameter touch's other points are visible even when they
-    // aren't the one Cmd+Ctrl+L happens to have selected right now
-    // ("レーンの外にあるパラメータも動かす").
+    // aren't the one Cmd+Ctrl+L happens to have selected right now.
     std::map<int, float> parameterPreviewValuesForCurrentTrack;
     for (auto& [key, value] : touchPreviewValues)
         if (key.first == cursorTrackIndex)
@@ -4397,7 +4337,7 @@ void MainEditorComponent::updatePendingNoteDisplays()
 void MainEditorComponent::updateStepGridScale()
 {
     // Auto: keep scaleRootPitchClass/scaleIsMinor synced to the whole-piece
-    // key estimate ("キーの推定もして"). hasEnoughData is false only when
+    // key estimate. hasEnoughData is false only when
     // there are no notes anywhere yet -- leave the previous key in place
     // rather than snapping to a meaningless default in that case.
     if (currentScaleType == ScaleType::Auto)
@@ -4483,9 +4423,8 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             // Cmd+Shift, see the Cmd block below), onto a fully mnemonic
             // Add/Prev/Next set instead of the old arbitrary T/G/B pairing.
             // Add Track itself later moved on again, off Cmd+Ctrl+A once
-            // that became the automation-edit-mode toggle below
-            // ("Ctrl Cmd Tで新規トラック。Ctr Cmd Aでオートメーションの
-            // 編集モード") -- 'T' for "Track", freely available since T/G/B
+            // that became the automation-edit-mode toggle below --
+            // 'T' for "Track", freely available since T/G/B
             // themselves moved off Cmd+Ctrl to Cmd+Shift long ago.
             if (key.isKeyCode('T'))
                 return trigger("Cmd+Ctrl+T - Add Track", [this] { addTrack(); });
@@ -4494,23 +4433,23 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             if (key.isKeyCode('N'))
                 return trigger("Cmd+Ctrl+N - Next Track", [this] { switchTrack(1); });
             // Set Loop End -- displaced off plain Cmd+C once that became
-            // note Copy (see the Cmd block below), per the user's request
-            // ("Cmd C, Cmd V ノートのコピーペースト"). Shift+C (loop start)
-            // stays put -- only Cmd+C needed the note-copy meaning.
+            // note Copy (see the Cmd block below), per the user's request.
+            // Shift+C (loop start) stays put -- only Cmd+C needed the
+            // note-copy meaning.
             if (key.isKeyCode('C'))
                 return trigger("Cmd+Ctrl+C - Set Loop End", [this] { setLoopEndHere(); });
             // Set Clip End -- displaced off plain Cmd+B once that became
-            // Select Note Down (Cmd+G/Cmd+B, see the Cmd block below --
-            // "上下を、TGからGBに動かす"). 'E' for "End", also conveniently
+            // Select Note Down (Cmd+G/Cmd+B, see the Cmd block below).
+            // 'E' for "End", also conveniently
             // free at this tier and unrelated to the Ctrl-block's own
             // "up/down" pair migration.
             if (key.isKeyCode('E') && currentViewMode != ViewMode::Session)
                 return trigger("Cmd+Ctrl+E - Set Clip End", [this] { setClipEndHere(); });
             // Toggle Loop -- displaced off plain 'b' once that became the
             // duration-move pair's retreat/advance half's neighbor... no,
-            // see switch(c) below for the full story ("vbはcvに移動する"
-            // then "上下を、TGからGBに動かす" bumped it again once plain
-            // 'b' was needed for Pitch/Automation-Value Down instead).
+            // see switch(c) below for the full story of how it ended up
+            // needing to relocate again once plain 'b' was needed for
+            // Pitch/Automation-Value Down instead.
             if (key.isKeyCode('B'))
                 return trigger("Cmd+Ctrl+B - Toggle Loop", [this] { toggleLoopEnabled(); });
             // Range start/end markers -- displaced here as a pair since
@@ -4523,7 +4462,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             // Toggle the current track's inclusion in ChordEstimator's
             // pooled analysis -- displaced off plain Cmd+A once that became
             // Select All Notes (see the Cmd block below, standard OS
-            // convention -- "Cmd Aで全てのノートを選択"). 'H' for
+            // convention). 'H' for
             // "Harmony" (its closest available mnemonic once 'A' and 'C'
             // were both already spoken for).
             if (key.isKeyCode('H'))
@@ -4559,9 +4498,10 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             // literally documented as "same as t/g, alternate binding");
             // repurposed for curveAmount once that became a continuous
             // parameter needing its own input, since t/g were already
-            // spoken for by value ("どちらかというとEaseIn,EaseOutの傾斜を
-            // 調整できる必要がありそう"). Checked before the Ctrl+Shift-only
-            // Z/X bindings below since Shift can be held alongside these too.
+            // spoken for by value and the ease-in/ease-out slope needed a
+            // way to be adjusted independently. Checked before the
+            // Ctrl+Shift-only Z/X bindings below since Shift can be held
+            // alongside these too.
             if (key.getModifiers().isShiftDown() && key.isKeyCode('Z'))
                 return trigger("Cmd+Ctrl+Shift+Z - Curve Amount Down (Coarse)", [this] { adjustAutomationPendingCurveAmount(-1, true); });
             if (key.getModifiers().isShiftDown() && key.isKeyCode('X'))
@@ -4582,8 +4522,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         {
             // Tie / Jump Forward 1 Bar -- displaced off plain T/G once those
             // became the in-chord note-selection keys (see the switch(c)
-            // block below), which the user asked for directly
-            // ("和音選択時にTでトップノートを選択、Gで下のノートを選択").
+            // block below), which the user asked for directly.
             // Every plain left-hand key is already spoken for elsewhere in
             // this file, so these two landed here instead -- Piano Roll
             // only, matching their original scope (Session View has no tie/
@@ -4600,16 +4539,15 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             if (key.isKeyCode('X'))
                 return trigger("Ctrl+X - Transpose Up", [this] { adjustVirtualKeyboardTranspose(1); });
             // Commits a pending chord at the cursor -- moved here off
-            // Cmd+F, which turned out to be the wrong key by mistake
-            // ("コミット間違えた。Cmd FじゃなくてCtrl Fにしたい"), then off
-            // Ctrl+F itself onto Ctrl+V ("CommitをCtrl Vにする"). Piano
+            // Cmd+F, which turned out to be the wrong key by mistake, then
+            // off Ctrl+F itself onto Ctrl+V. Piano
             // Roll only, same scope as Ctrl+T/G above. Automation edit mode
             // redefines this same physical key as "commit" too, just for a
-            // point instead of a note -- same muscle memory either way
-            // ("点の挿入もNoteのCommitと同じようにCtrl Fで良い", moved
-            // along with Commit so the two stay on the same key), Cmd+Ctrl+I
-            // stays as the alternate binding (see cycleAutomationLane()'s
-            // Cmd+Ctrl+L, same "keep the old one too" precedent).
+            // point instead of a note -- same muscle memory either way,
+            // moved along with Commit so the two stay on the same key.
+            // Cmd+Ctrl+I stays as the alternate binding (see
+            // cycleAutomationLane()'s Cmd+Ctrl+L, same "keep the old one
+            // too" precedent).
             if (key.isKeyCode('V') && currentViewMode != ViewMode::Session && automationEditModeActive)
                 return trigger("Ctrl+V - Insert Automation Point", [this] { insertAutomationPointAtCursor(); });
             if (key.isKeyCode('V') && currentViewMode != ViewMode::Session)
@@ -4634,14 +4572,13 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         // now uses them instead of 3/E/W/R/T at whichever modifier tier
         // it lives on. Originally lived on T/G, moved one more letter over
         // once T/G's own physical position turned out not to be the most
-        // comfortable spot either ("上下を、TGからGBに動かす").
+        // comfortable spot either.
         if (key.getModifiers().isAltDown() && key.isKeyCode('G'))
             return trigger("Cmd+Option+G - Scroll Pitch Up", [this] { scrollStepGridPitch(1); });
         if (key.getModifiers().isAltDown() && key.isKeyCode('B'))
             return trigger("Cmd+Option+B - Scroll Pitch Down", [this] { scrollStepGridPitch(-1); });
-        // Zoom -- moved here off Cmd+Ctrl at the user's request ("Cmd SHIFT
-        // T縦方向拡大、Cmd SHIFT G縦方向縮小Cmd Shift D横方向拡大、Cmd
-        // Shift F横方向縮小"), swapping places with Octave Up/Down (moved to
+        // Zoom -- moved here off Cmd+Ctrl at the user's request, swapping
+        // places with Octave Up/Down (moved to
         // Cmd+Ctrl+T/G, see the Ctrl block above -- Cmd+Shift+D/F were free,
         // no swap needed for those two).
         if (key.getModifiers().isShiftDown() && key.isKeyCode('G'))
@@ -4656,27 +4593,25 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             return trigger("Cmd+Shift+S - Save As", [this] { saveProjectAs(); });
         // Set Loop Start -- displaced off plain Shift+C once that became
         // Jump Back 1 Bar (paired with plain 'c' becoming Retreat, see
-        // switch(c) below) ("vbはcvに移動する"). Kept on the same letter
+        // switch(c) below). Kept on the same letter
         // 'C' as before, just with Cmd added on top, so it still pairs
         // cleanly by letter with Cmd+Ctrl+C's Set Loop End.
         if (key.isKeyCode('C') && key.getModifiers().isShiftDown())
             return trigger("Cmd+Shift+C - Set Loop Start", [this] { setLoopStartHere(); });
         // Shift+A's twin (see jumpToClipEnd()'s declaration) -- shared,
         // unconditional pure cursor movement, same as Shift+A itself, so
-        // it behaves identically whether editing notes or automation
-        // ("先頭/末尾へジャンプ...揃えられるところは揃えたい").
+        // it behaves identically whether editing notes or automation.
         if (key.isKeyCode('A') && key.getModifiers().isShiftDown() && currentViewMode != ViewMode::Session)
             return trigger("Cmd+Shift+A - Jump to End", [this] { jumpToClipEnd(); });
         // Groups with Cmd+U (Cycle Quantize Amount, below) under the same
         // "quantize toggles" letter -- toggles whether Real-time REC auto-
         // quantizes every note it commits (see autoQuantizeOnRecordEnabled's
-        // declaration -- "Recording時に自動でクオンタイズかけたいON/OFF
-        // したい").
+        // declaration).
         if (key.isKeyCode('U') && key.getModifiers().isShiftDown())
             return trigger("Cmd+Shift+U - Toggle Auto-Quantize on Record", [this] { toggleAutoQuantizeOnRecord(); });
         // Save moved off Cmd+S onto Cmd+0 (below) to free Cmd+S up for
         // Unquantize -- Cmd+5 was already taken by the chord-voicing octave
-        // shift ("SaveはCmd+0にして、Cmd sをUnquantizeにする"). Piano Roll
+        // shift. Piano Roll
         // only, same scope the old plain-'5' Unquantize binding had.
         if (key.isKeyCode('S') && currentViewMode != ViewMode::Session)
             return trigger("Cmd+S - Unquantize", [this] { unquantizeSelectedNotes(); });
@@ -4695,15 +4630,14 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         if (key.isKeyCode('K')) // 'K' for "Keyboard" -- show/hide the live shortcut cheat-sheet window
             return trigger("Cmd+K - Keyboard Overlay", [this] { toggleKeyboardOverlay(); });
         // Alias for plain 'q' (Duplicate Range) -- added alongside it, not
-        // instead of it, per the user's request ("Cmd Dは選択範囲の
-        // Duplicate"). Piano Roll only, same scope as 'q'.
+        // instead of it, per the user's request. Piano Roll only, same
+        // scope as 'q'.
         if (key.isKeyCode('D') && currentViewMode != ViewMode::Session)
             return trigger("Cmd+D - Duplicate Range", [this] { duplicateSelectedRange(); });
         // In-chord note selection (navigateNoteSelection()) -- swapped with
-        // plain G/B (see switch(c) below), per the user's request
-        // ("Cmd T/Gと何もなしのT/Gを入れ替える" originally, relocated off
-        // T/G onto G/B along with every other "up/down" pair -- "上下を、
-        // TGからGBに動かす"). Cmd+B displaces the old Set Clip End (moved
+        // plain G/B (see switch(c) below), per the user's request,
+        // relocated off T/G onto G/B along with every other "up/down" pair.
+        // Cmd+B displaces the old Set Clip End (moved
         // to Cmd+Ctrl+E, see the Ctrl block above).
         if (key.isKeyCode('G'))
             return trigger("Cmd+G - Select Top Note", [this] { navigateNoteSelection(-1, false); });
@@ -4713,7 +4647,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             return trigger("Cmd+M - Cycle Scale", [this] { cycleScale(); });
         // Automation edit mode redefines Cmd+C/V as copying/pasting
         // automation points instead -- see copySelectedAutomationPoints()'s
-        // declaration ("複数選択+一括操作...揃えられるところは揃えたい").
+        // declaration.
         if (key.isKeyCode('C') && automationEditModeActive && currentViewMode != ViewMode::Session)
             return trigger("Cmd+C - Copy Automation Points", [this] { copySelectedAutomationPoints(); });
         if (key.isKeyCode('V') && automationEditModeActive && currentViewMode != ViewMode::Session)
@@ -4729,7 +4663,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         // Standard OS convention -- selects every note in the current
         // track's clip into multiSelectedNoteStarts so a single following
         // action (delete, transpose, quantize, velocity, ...) applies to
-        // the whole clip at once ("Cmd Aで全てのノートを選択"). Displaces
+        // the whole clip at once. Displaces
         // the old "toggle chord track" binding, moved to Cmd+Ctrl+H (see
         // the Ctrl block above). Piano Roll only (no note concept in
         // Session View).
@@ -4743,8 +4677,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         // Shift+5/Shift+R -- Shift+digit combos don't reliably arrive at
         // all on this keyboard/JUCE setup (Shift+5 types '%' instead), so
         // the whole pair came back to Cmd rather than leave just one half
-        // on Shift ("Shift 5 , Shift RができないならやっぱりCmd 5、Cmd R
-        // にもどす"). Displaces the range-duplication start/end markers,
+        // on Shift. Displaces the range-duplication start/end markers,
         // which stay on Cmd+Ctrl+5/Cmd+Ctrl+R (see the Ctrl block above).
         if (key.isKeyCode('5'))
             return trigger("Cmd+5 - Raise Lowest Note (Octave)", [this] { adjustSelectionVoicingEdge(true); });
@@ -4758,8 +4691,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             return trigger("Cmd+U - Cycle Quantize Amount", [this] { cycleQuantizeAmount(); });
         // Quantize grid -- moved here off plain 1/2/3/4 (see switch(c)
         // below) so plain 3/e could become track prev/next in the Piano
-        // Roll too, matching Session View ("トラックの追加削除でPlay止め
-        // ない、3, eでトラック前後、PianRollでもトラック変更できるように").
+        // Roll too, matching Session View.
         // Unquantize itself is Cmd+S instead of Cmd+5, since Cmd+5/Cmd+R
         // were already the chord-voicing octave shift.
         if (key.isKeyCode('1') && currentViewMode != ViewMode::Session)
@@ -4807,7 +4739,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
     // Octave moved to Cmd+Ctrl+T/G (see the Ctrl block above) and Extend
     // Selection needed plain Shift+T/G instead (see the Shift block below),
     // per the user's request. Relocated off T/G onto G/B along with every
-    // other "up/down" pair ("上下を、TGからGBに動かす").
+    // other "up/down" pair.
     if (key.getModifiers().isShiftDown() && key.getModifiers().isAltDown())
     {
         auto browseModePitchNudge = currentViewMode == ViewMode::PianoRoll && recMode == RecMode::Off;
@@ -4840,8 +4772,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         // redefines this to nudge automation points/events instead of
         // notes, same "same physical key, different target depending on
         // mode" pattern already used elsewhere in this file (Ctrl+V/
-        // Cmd+Ctrl+I, a/Cmd+Ctrl+D, etc.) ("Option D, Fはノートや、
-        // おーとめーしょんのポイントを左右に移動する").
+        // Cmd+Ctrl+I, a/Cmd+Ctrl+D, etc.).
         if (key.isKeyCode('D') && currentViewMode != ViewMode::Session)
             return trigger("Option+D - Nudge Left", [this]
             {
@@ -4858,8 +4789,8 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
     }
 
     // Commit-duration cycling reuses the octave-shift Z/X keys with Shift
-    // instead of adding new plain keys ("同じキーを装飾で使い回して節約して"
-    // -- economize by reusing existing keys via a modifier).
+    // instead of adding new plain keys -- economize by reusing existing
+    // keys via a modifier.
     if (key.getModifiers().isShiftDown())
     {
         if (key.isKeyCode('Z')) // finer duration
@@ -4868,7 +4799,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             return trigger("Shift+X - Coarser Duration", [this] { cycleCommitDuration(1); });
         // Automation edit mode redefines these as extending the automation
         // multi-point selection instead -- see extendAutomationSelection()'s
-        // declaration ("複数選択+一括操作...揃えられるところは揃えたい").
+        // declaration.
         if (key.isKeyCode('F') && automationEditModeActive && currentViewMode != ViewMode::Session)
             return trigger("Shift+F - Extend Automation Selection Fwd", [this] { extendAutomationSelection(1); });
         if (key.isKeyCode('D') && automationEditModeActive && currentViewMode != ViewMode::Session)
@@ -4882,12 +4813,12 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             return trigger("Shift+D - Extend Note Selection Back", [this] { extendNoteSelection(-1); });
         // Extend the individual-note selection (navigateNoteSelection()) --
         // moved off Shift+T/G once those became track switching, per the
-        // user's request ("Shift T, Shift Gでトラック選択").
+        // user's request.
         if (key.isKeyCode('Q'))
             return trigger("Shift+Q - Extend Selection Up", [this] { navigateNoteSelection(-1, true); });
         // Extend Selection Down moved off Shift+A onto Shift+R (freed up by
         // the voicing edge shift moving back to Cmd+5/Cmd+R below) -- Shift+A
-        // is now "jump to start" instead ("Shift Aで先頭にロケータを戻す").
+        // is now "jump to start" instead.
         // Reuses moveCursor()'s own clamp-to-0 rather than a dedicated
         // method: moveCursor(-cursorStepIndex) always lands exactly on 0.
         if (key.isKeyCode('A'))
@@ -4896,11 +4827,11 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
             return trigger("Shift+R - Extend Selection Down", [this] { navigateNoteSelection(1, true); });
         // Octave shift -- moved here off Cmd+Ctrl+T/G (now free), displacing
         // Prev/Next Track (still reachable via Cmd+Ctrl+P/N), per the
-        // user's request ("Shift T、Shift Gでオクターブ上げ下げ").
+        // user's request.
         // Automation edit mode: coarse value up/down -- see plain g/b's
         // matching check in switch(c) below. Relocated off Shift+T/G onto
         // Shift+G/B along with every other "up/down" pair, freeing plain
-        // Shift+T entirely ("上下を、TGからGBに動かす").
+        // Shift+T entirely.
         if (key.isKeyCode('G') && automationEditModeActive && currentViewMode != ViewMode::Session)
             return trigger("Shift+G - Automation Value Up (Coarse)", [this] { adjustAutomationPendingValue(1, true); });
         if (key.isKeyCode('B') && automationEditModeActive && currentViewMode != ViewMode::Session)
@@ -4916,8 +4847,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         // Jump by a full measure (4 beats, 4/4 assumed) -- pairs directly
         // with plain 'c'/'v' below (duration-preset step, back/forward),
         // Shift making the same two keys jump a whole bar instead of one
-        // step ("Shift B Shift Vでジャンプ移動" originally, relocated onto
-        // c/v once those took over v/b's old job -- "vbはcvに移動する").
+        // step, relocated onto c/v once those took over v/b's old job.
         // Piano Roll only, same scope 's'/Ctrl+G's older bar-jump bindings
         // already have (no step cursor in Session View to jump). Displaces
         // the old Shift+C (Set Loop Start, moved to Cmd+Shift+C above).
@@ -4983,9 +4913,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         // Automation edit mode redefines 'a' as clearing the point/event at
         // the cursor -- same key and (via deleteAutomationPointAtCursor()'s
         // own fallback) same "select the nearest remaining one, or back to
-        // bar 1 if none" behavior as clearing a note
-        // ("点のクリアや、クリアされて点がなくなった時の挙動は、ノートの
-        // クリアと合わせる").
+        // bar 1 if none" behavior as clearing a note.
         case 'a': if (!inSessionView && automationEditModeActive) return trigger("a - Delete Automation Point", [this] { deleteAutomationPointAtCursor(); });
             return inSessionView
             ? trigger("a - Delete Clip", [this] { deleteClipAtCursor(); })
@@ -4995,10 +4923,10 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         // used to be Tie -- moved to Ctrl+T (see the Ctrl block above) once
         // 't' was needed here for the semitone pitch nudge instead, swapped
         // with Cmd+G's old role (see the Cmd block above) per the user's
-        // request ("Cmd T/Gと何もなしのT/Gを入れ替える"). Piano-Roll/
+        // request. Piano-Roll/
         // automation "up" meaning relocated off plain 't' onto plain 'g'
-        // below along with every other "up/down" pair ("上下を、TGから
-        // GBに動かす") -- only the unrelated Session-View meaning
+        // below along with every other "up/down" pair -- only the
+        // unrelated Session-View meaning
         // (Load Slot) stays here, since that was never part of the
         // up/down convention to begin with.
         case 't': if (inSessionView) return trigger("t - Load Slot to Editor", [this] { loadSlotAtCursorToEditor(); });
@@ -5014,11 +4942,11 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         // relocated here off plain 'b' so the whole back/forward pair sits
         // directly beneath d/f on the keyboard instead of one row further
         // right, once 'd'/'f' settled on pure note/point jumping and this
-        // pair needed a home of its own ("vbはcvに移動する").
+        // pair needed a home of its own.
         case 'v': return trigger("v - Advance", [this] { advanceByDuration(); });
         // Retreat's other half of the pair above -- displaces the old
         // plain 'c' (Toggle Loop, relocated to plain 'b' below, see its
-        // comment) ("vbはcvに移動する").
+        // comment).
         case 'c': return trigger("c - Retreat", [this] { retreatByDuration(); });
         // Duplicates the Cmd+Ctrl+5/Cmd+Ctrl+R marked range -- Piano Roll only (no
         // step cursor/range concept in Session View), falls through to
@@ -5040,18 +4968,17 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         // instead, swapped with Cmd+G's old role, same as 't' above. Now the
         // app-wide "up" half of the up/down convention (absorbing plain
         // 't's old Piano-Roll/automation meaning -- see 't' above) --
-        // relocated off T/G onto G/B along with every other "up/down" pair
-        // ("上下を、TGからGBに動かす"). Still no Session-View meaning of
-        // its own, same as before.
+        // relocated off T/G onto G/B along with every other "up/down" pair.
+        // Still no Session-View meaning of its own, same as before.
         case 'g': if (!inSessionView && automationEditModeActive) return trigger("g - Automation Value Up", [this] { adjustAutomationPendingValue(1, false); });
             if (!inSessionView) return trigger("g - Pitch Up", [this] { adjustNotePitch(1); });
             break;
         // Session View: Duplicate Clip (unrelated to the up/down convention,
         // stays put regardless of what plain 'b' does elsewhere). Piano
         // Roll: the "down" half of the up/down pair now that it moved off
-        // G onto G/B -- Toggle Loop (which briefly lived here after
-        // "vbはcvに移動する") relocated again to Cmd+Ctrl+B to make room
-        // ("上下を、TGからGBに動かす").
+        // G onto G/B -- Toggle Loop (which briefly lived here after v/b
+        // took over c/v's old job) relocated again to Cmd+Ctrl+B to make
+        // room.
         case 'b': if (inSessionView) return trigger("b - Duplicate Clip", [this] { duplicateClipAtCursor(); });
             if (automationEditModeActive) return trigger("b - Automation Value Down", [this] { adjustAutomationPendingValue(-1, false); });
             return trigger("b - Pitch Down", [this] { adjustNotePitch(-1); });
@@ -5068,8 +4995,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         // Track prev/next -- now the same in both views (used to be
         // Session-View-only, with Piano Roll repurposing '3' for quantize
         // and 'e' as a no-op; quantize moved to Cmd+1-4/Cmd+S instead, see
-        // the Cmd block above), per the user's request ("3, eでトラック
-        // 前後、PianRollでもトラック変更できるように").
+        // the Cmd block above), per the user's request.
         case '3': return trigger("3 - Prev Track", [this] { switchTrack(-1); });
         case 'e': return trigger("e - Next Track", [this] { switchTrack(1); });
         // Note Repeat rate -- previously-unused plain digits (no note map
@@ -5077,8 +5003,7 @@ bool MainEditorComponent::keyPressed(const juce::KeyPress& key)
         // '0' IS a note-map key, '3' is Prev Track, so those two are
         // skipped). Pressing the already-active rate again turns note
         // repeat off instead of re-selecting it -- see setNoteRepeatRate()'s
-        // declaration ("note repeat機能をつけたい。1/4, 1/8, 1/16、
-        // トリプレットON/OFF"). Works the same in both views, same as 'c'/
+        // declaration. Works the same in both views, same as 'c'/
         // 'w'/'r' above -- it only actually writes anything once you're
         // back in the Piano Roll with REC on, but the live audio retrigger
         // is meaningful either way.
@@ -5319,11 +5244,9 @@ void MainEditorComponent::resized()
     // transportBar's badges wrap onto as many rows as its actual width
     // needs (see TransportBarComponent::getRequiredHeightForWidth()'s
     // declaration) rather than running off the right edge, which is what
-    // used to happen once enough badges accumulated
-    // ("各種設定のON/OFFが画面横に広がりすぎ。折り返すか何かでいつでも
-    // 全体が見えるようにしたい"). Its width here is always the full
-    // window width (nothing's been subtracted from bounds yet), so the
-    // required height can be computed before actually sizing it.
+    // used to happen once enough badges accumulated. Its width here is
+    // always the full window width (nothing's been subtracted from bounds
+    // yet), so the required height can be computed before actually sizing it.
     transportBar.setBounds(bounds.removeFromTop(transportBar.getRequiredHeightForWidth(bounds.getWidth())));
     trackList.setBounds(bounds.removeFromLeft(200));
 

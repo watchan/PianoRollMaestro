@@ -56,8 +56,7 @@ struct Step
 // approximated via note length, so the loaded synth/plugin's OWN
 // sustain-pedal behavior (including any pedal-specific timbre/resonance
 // layer it has) reproduces during playback exactly as it already sounds
-// during live preview ("サスティンをCCとして記録せずに、ただの長いノート
-// として記録している？だとしたら仕様が全然違う").
+// during live preview.
 struct SustainPedalEvent
 {
     int stepIndex = 0;
@@ -91,17 +90,14 @@ struct SustainPedalEvent
 // shape of the segment about to be committed, letting the position (t/g)
 // and shape (Cmd+Ctrl+V / Cmd+Ctrl+Z/X) of a not-yet-placed point be
 // decided together while looking at it, rather than having to place the
-// point first and only then go back to shape the segment that led to it
-// ("終点を打つ前に、うっすらと引かれたカーブの絵を見ながら、カーブの形と
-// 終点の位置を決める方がユーザフレンドリー").
+// point first and only then go back to shape the segment that led to it.
 //
 // Replaced the original 4-way discrete Linear/EaseIn/EaseOut/Step enum
 // with a binary type (Curve/Step) plus a continuous signed strength
 // (AutomationPoint::curveAmount) after hands-on use showed the discrete
 // steps were both hard to tell apart visually and too coarse to dial in
 // a specific feel -- the same "tension knob" a segment gets in Ableton
-// Live/FL Studio/Cubase/Logic's own automation editors
-// ("どちらかというとEaseIn,EaseOutの傾斜を調整できる必要がありそう"). Step
+// Live/FL Studio/Cubase/Logic's own automation editors. Step
 // is kept as its own discrete type rather than folded into the
 // continuous range because it's a qualitatively different, non-curve
 // behavior (a flat hold followed by an instant jump) that no power-curve
@@ -191,8 +187,7 @@ class MidiClip
 {
 public:
     // 960 -- the same ticks-per-quarter-note resolution standard MIDI files
-    // and most professional DAWs use ("リアルタイムRecはMIDI限界まで
-    // 解像度を上げたい。タイミング"), not a plain power-of-2 like 1024, so
+    // and most professional DAWs use, not a plain power-of-2 like 1024, so
     // both 16th notes AND eighth-note triplets (which don't divide evenly
     // into a power-of-2-per-quarter grid at all) are exact integer step
     // counts: 960 / 4 = 240 (16th), 960 / 2 * 2 / 3 = 320 (8th triplet).
@@ -230,8 +225,7 @@ public:
     // same mechanism real DAW host automation uses, so it works for
     // whatever parameters a given plugin actually exposes rather than
     // being limited to what it happens to listen for over MIDI CC
-    // ("オートメーションについてピッチベンド、モジュレーションのほか
-    // 各種CCについて書けるようにしたい" -- touch-to-automate covers this
+    // (touch-to-automate covers this
     // more generally than enumerating individual CC numbers would).
     std::vector<ParameterAutomationLane> parameterLanes;
 

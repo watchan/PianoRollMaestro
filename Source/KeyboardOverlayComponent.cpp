@@ -36,9 +36,8 @@ namespace
     // instance is called out by name in MainEditorComponent::keyPressed()'s
     // own comments explaining why that combo was avoided). Kept here purely
     // so the overlay can show them greyed out with why, instead of looking
-    // exactly like every other plain unassigned key on the board
-    // ("MacOS側に処理を奪われるショートカットキーはグレーアウトでその機能を
-    // Keyboardに表示させたい"). needsCtrl/needsCmd/needsAlt/needsShift must
+    // exactly like every other plain unassigned key on the board.
+    // needsCtrl/needsCmd/needsAlt/needsShift must
     // ALL match the currently-held modifiers exactly -- these combos are
     // only actually blocked at that one specific tier, not at every tier
     // that happens to include the key.
@@ -400,8 +399,7 @@ void KeyboardOverlayComponent::paint(juce::Graphics& g)
             // Root-of-key highlight: melodic keyboard only (drum pads
             // aren't pitched notes) -- a distinct colour on every key whose
             // note is the estimated key's root, so the root is visible at
-            // a glance while playing ("キーが判明したら、Keyboard上で、
-            // Rootのキーの色を変えて。ルートがわかるように").
+            // a glance while playing.
             auto isRootKey = false;
             if (isNoteKey && !drumGrid && keyShown())
             {

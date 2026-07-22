@@ -18,17 +18,14 @@ public:
     // land before actually committing. Empty = nothing pending, draws nothing.
     // durationSteps sizes the outline box to the currently-selected commit
     // duration preset (Shift+Z/X) instead of a fixed single step, so the
-    // preview already shows how long the note will actually be written as
-    // ("Noteをキーボードから入力した時に表示する先頭の黄色い四角の長さを、
-    // 現在指定している音価にする").
+    // preview already shows how long the note will actually be written.
     void setPreviewNotes(const std::vector<int>& pitches, int durationSteps);
 
     // Multiplies both preview elements' alpha (1 = full strength, 0 =
     // invisible) -- MainEditorComponent::timerCallback() ramps this down
     // over the last ~0.2s before a forgotten pendingChord auto-clears (see
     // pendingChordIdleSinceMs's declaration), so the color fades out
-    // visibly instead of the preview just vanishing outright
-    // ("0.2秒程度のアニメーションでじんわりとNoteを示す色が消えて").
+    // visibly instead of the preview just vanishing outright.
     void setPreviewAlpha(float alpha);
 
     // stepIndexOrMinusOne = the step currently sounding during playback,
@@ -51,12 +48,10 @@ public:
     // own pixel heights, deliberately NOT scaled together anymore. They
     // used to move as one (zoomVertical()), but that meant zooming the
     // note grid also resized the automation lanes and vice versa, which
-    // the user found undesirable enough to call out by name
-    // ("縦拡大縮小は、レーンごとに分けて欲しい。ノートレーン、
-    // オートメーションレーンは別"). Horizontal zoom stays a single shared
-    // control (zoomHorizontal()) since every lane shares the same step
-    // axis -- desyncing that would make lanes no longer line up
-    // ("横拡大縮小は全部合わせていて良い。ズレたら困るので").
+    // the user found undesirable enough to call out by name. Horizontal
+    // zoom stays a single shared control (zoomHorizontal()) since every
+    // lane shares the same step axis -- desyncing that would make lanes
+    // no longer line up.
     void zoomVerticalNoteRows(float factor);
     void zoomVerticalAutomationLanes(float factor);
     void zoomHorizontal(float factor);
@@ -111,9 +106,7 @@ public:
     // whole gesture hasn't ended yet -- e.g. some OTHER note is still being
     // sustained) stops growing exactly where its own note-off happened
     // instead of visually continuing to stretch alongside whatever's still
-    // held ("Realtime RECの入力時のノートが伸びていく時...一度ノートOFFに
-    // なったらその時点でノートの入力が止まるようにアニメーション表示でも
-    // 示してほしい"). startStep is likewise each note's OWN onset (not
+    // held. startStep is likewise each note's OWN onset (not
     // necessarily the gesture's very first note-on), matching how
     // commitPendingNoteAt() ultimately writes each onset group. endStep is
     // exclusive per entry. Empty = nothing pending, draws nothing.
@@ -147,9 +140,7 @@ public:
     // lane, or automation edit mode off; that lane has no continuous value).
     // Draws a faint dashed preview of the exact line/curve that would
     // result from committing right now, so the effect of Ctrl+V is visible
-    // BEFORE pressing it, not just after
-    // ("今のカーソルに点を打つと、どんな直線やカーブが描かれるのか、軌跡を
-    // うっすらと見えるようにしたい").
+    // BEFORE pressing it, not just after.
     void setAutomationPendingValue(int value);
     // The curve type Cmd+Ctrl+V is currently cycling for the NEXT point
     // Ctrl+V/Cmd+Ctrl+I would place -- see AutomationCurveType's
@@ -184,9 +175,7 @@ public:
     // setParameterAutomationPendingValue() above (which only ever tracks
     // the ONE currently Cmd+Ctrl+L-selected lane), drawParameterLane()
     // shows a ghost marker for EVERY lane with an entry here, whether or
-    // not it's the selected one ("プラグインから同時に複数のパラメータが
-    // 変更される場合は、変更される全ての点を動かす。レーンの外にある
-    // パラメータも動かす").
+    // not it's the selected one.
     void setParameterAutomationPreviewValues(const std::map<int, float>& valuesByLaneIndex);
     // Parameter lane's own pending curve type/amount, mirroring
     // setAutomationPendingCurveType()/setAutomationPendingCurveAmount()
@@ -195,15 +184,12 @@ public:
     // MainEditorComponent::parameterPendingCurveType/CurveAmount. Shapes
     // the ghost-preview segment for the Cmd+Ctrl+L-selected Parameter lane
     // exactly like Pitch Bend/Filter Cutoff's own ghost does -- a Parameter
-    // lane is a full automation lane, not a curve-less approximation of one
-    // ("プラグインからオートメーションレーンが追加された場合Curveが
-    // 出てこない。別物の扱いにしないで").
+    // lane is a full automation lane, not a curve-less approximation of one.
     void setParameterAutomationPendingCurveType(AutomationCurveType type);
     void setParameterAutomationPendingCurveAmount(float amount);
     // Shift+D/F multi-selection (MainEditorComponent::multiSelectedAutomationSteps)
     // -- an outline ring around each selected point's marker, mirroring
-    // setSelectedNoteStarts()'s cyan note-block outline
-    // ("複数選択+一括操作...揃えられるところは揃えたい").
+    // setSelectedNoteStarts()'s cyan note-block outline.
     void setSelectedAutomationSteps(const std::vector<int>& stepIndices);
 
     // Exposed so ChordEstimateBarComponent can align its bar labels to
@@ -249,8 +235,7 @@ private:
     // visibleStepsCount), via followStepIfOffscreen(). Deliberately NOT
     // recomputed to re-center every frame -- that made the view jump on
     // every single cursor advance even while the cursor was still
-    // comfortably on-screen ("カーソルが画面内にいるうちは画面遷移しなく
-    // て良い。はみ出る時に動かしたい"). Mirrors lowestVisiblePitch/
+    // comfortably on-screen. Mirrors lowestVisiblePitch/
     // centerPitchView()'s same "only scroll when off-screen" pattern on the
     // vertical axis.
     int firstVisibleStep = 0;
@@ -270,9 +255,7 @@ private:
     static constexpr float velocityLaneHeight = 28.0f; // bottom strip showing per-note velocity bars
     // Adjustable (not constexpr) -- see zoomVerticalAutomationLanes()'s
     // declaration: Cmd+Shift+T/G scales these while automation edit mode
-    // is active, independently of the note grid's own pitch-row zoom
-    // ("オートメーションのレーンも縦方向の拡大縮小できるようにしたい" /
-    // "縦拡大縮小は、レーンごとに分けて欲しい").
+    // is active, independently of the note grid's own pitch-row zoom.
     float sustainLaneHeight = 14.0f; // very bottom strip showing sustain pedal ON/OFF -- see paint()
 
     // Pitch-bend/filter-cutoff lanes, below the sustain lane -- see

@@ -85,9 +85,9 @@ private:
     // keyboard (virtualKeyboardKeyMap(), default) and the 4x4 drum grid
     // (virtualDrumKeyMap()) for the same physical keys. Neither map needs
     // a held modifier anymore, so this toggle is what disambiguates them
-    // instead ("代わりに１６Pad 4x4の方は/で切り替え" -- moved from '/' to
+    // instead -- moved from '/' to
     // Enter once '/' turned out to double as the melodic map's last key
-    // AND the drum grid's last pad, see drumGridModeActive's declaration).
+    // AND the drum grid's last pad, see drumGridModeActive's declaration.
     void toggleDrumGridMode();
     // Ctrl+Z / Ctrl+X, semitone steps -- shifts virtualKeyboardTransposeSemitones,
     // applied only to the melodic map (not the drum grid, which is meant to
@@ -116,9 +116,8 @@ private:
     // a loop's wrap point: a note struck just BEFORE the loop wraps back to
     // its start (anticipating the wrap) is captured at the loop's start
     // step instead of its own literal near-the-tail raw position, so
-    // recording can continue seamlessly across the loop boundary
-    // ("繰り返しの後ろに作られたノートは、頭に戻った拍に置く。こうする
-    // ことで繰り返しの中でRecできる"). Only called while
+    // recording can continue seamlessly across the loop boundary.
+    // Only called while
     // playbackEngine.isPlaying() (the count-in case is handled separately
     // via getCountInTargetStep()).
     int realtimeOnsetStep() const;
@@ -151,8 +150,7 @@ private:
     // forced hidden. Called on every track switch and whenever the switch
     // changes. Never lets a shown window take keyboard focus -- activating
     // it would silently break every keyboard shortcut in the main editor
-    // until you click back ("プラグインウィンドウをアクティブにしない。
-    // アクティブにすると手の操作が止まってしまうため").
+    // until you click back.
     void updatePluginEditorWindowVisibility();
     // A track's plugin instance was just replaced or removed -- any
     // existing PluginEditorWindow for it holds a reference to the now-
@@ -210,10 +208,7 @@ private:
     // playing) so StepGridComponent's ghost marker tracks the knob at the
     // current cursor position. Nothing is actually written until an
     // explicit Cmd+Ctrl+I, exactly like the keyboard-driven pending value
-    // Pitch Bend/Filter Cutoff already use ("Touchでオートメーションを書く
-    // とき、MANUALでも書けるようにしたい。レーン上のAutomationの点を
-    // パラメータの変化に合わせて上下させて、Commitすると点が撃たれる
-    // ようにする").
+    // Pitch Bend/Filter Cutoff already use.
     void previewTouchedParameterValue(int trackIndex, juce::AudioProcessorParameter& parameter, float value);
     // Cmd+Ctrl+W.
     void toggleAutomationTouchMode();
@@ -229,9 +224,7 @@ private:
     // true falls back to moveCursor(direction) for precise placement
     // (extendNoteSelection()'s Shift+D/F use); false does nothing instead
     // -- plain d/f's pure note-to-note navigation, which is deliberately
-    // NOT duration-preset aware ("Dfはノート単位で動く、B Vが指定した
-    // 音価単位で動くにする" -- duration-preset movement is 'c'/'v' now,
-    // "vbはcvに移動する").
+    // NOT duration-preset aware -- duration-preset movement is 'c'/'v' now.
     void moveCursorByNoteOrStep(int direction, bool fallbackToStep);
     // Plain 'f': pure note-to-note navigation, never commits -- committing
     // lives on Ctrl+V instead (see commitPendingNoteManually()). Duration-
@@ -247,8 +240,7 @@ private:
     // No-op with nothing pending, in Browse mode (recMode == Off), or in
     // Realtime mode while stopped (that's deliberately preview-only --
     // see RecMode::Realtime's declaration). Briefly lived on Cmd+F by
-    // mistake, moved to Ctrl+F ("コミット間違えた。Cmd FじゃなくてCtrl F
-    // にしたい"), then to Ctrl+V ("CommitをCtrl Vにする").
+    // mistake, moved to Ctrl+F, then to Ctrl+V.
     void commitPendingNoteManually();
     // Shared by deleteAndRetreat() and clearCurrentStep(): clears every
     // step belonging to the note starting at ownerIndex (its own step plus
@@ -268,8 +260,8 @@ private:
     // toIndex instead. Without this, the selection/cursor were left
     // pointing at the now-empty rest the note just vacated -- the cyan
     // outline or narrowed selection looked like it had silently cleared
-    // even though nothing was ever actually deselected ("選択して
-    // クオンタイズをかけた後選択が外れてしまう"). cursorWasOnFromIndex must
+    // even though nothing was ever actually deselected.
+    // cursorWasOnFromIndex must
     // be computed by the caller BEFORE calling moveNoteTo() -- by the time
     // this runs, fromIndex's old span is already vacated, so
     // findOwningNoteStepIndex() can no longer be used here to tell whether
@@ -329,8 +321,8 @@ private:
     void extendNoteSelection(int direction);
     // Cmd+A -- populates multiSelectedNoteStarts with every note in the
     // current track's clip, so a single following action (delete, pitch
-    // shift, quantize, velocity, ...) applies to the whole clip at once
-    // ("Cmd Aで全てのノートを選択"). Piano Roll only.
+    // shift, quantize, velocity, ...) applies to the whole clip at once.
+    // Piano Roll only.
     void selectAllNotesInCurrentTrack();
     // The notes (by owning step index) a quantize action ('1'/'2'/'3'/'5')
     // would affect right now: multiSelectedNoteStarts if non-empty,
@@ -367,9 +359,8 @@ private:
     // Option+D ('direction' -1) / Option+F ('direction' +1) -- nudges
     // every note in effectiveSelectedNoteStarts() one base step left/right
     // (raw relocation, NOT quantize -- doesn't touch quantizedFromStep),
-    // reusing moveNoteTo()'s own tie-chain/collision-merge handling
-    // ("Option D, Fはノートや、おーとめーしょんのポイントを左右に移動
-    // する"). Landing exactly on another note's own head merges pitches
+    // reusing moveNoteTo()'s own tie-chain/collision-merge handling.
+    // Landing exactly on another note's own head merges pitches
     // into it, same convention moveNoteTo() already uses elsewhere.
     void nudgeSelectedNotes(int direction);
     void toggleQuantizeTripletMode(); // '4'
@@ -385,8 +376,7 @@ private:
     // noteRepeatEnabled on, UNLESS gridSteps already matches the current
     // rate AND it's already on, in which case this turns it off instead
     // (so the same three keys both pick a rate and act as their own
-    // off-switch, no separate key needed -- "note repeat機能をつけたい。
-    // 1/4, 1/8, 1/16, トリプレットON/OFF").
+    // off-switch, no separate key needed).
     void setNoteRepeatRate(int gridSteps);
     void toggleNoteRepeatTripletMode(); // '5'
     // Called every timerCallback() tick -- while noteRepeatEnabled and at
@@ -544,7 +534,7 @@ private:
     class StepEditGuard;
     // sustainPedalEvents/pitchBendPoints/filterCutoffPoints joined steps
     // here so StepEditGuard's undo/redo tracking covers automation edits
-    // too, not just note edits ("Undo, Redoにオートメーションも含めて") --
+    // too, not just note edits --
     // scheduleUpTo() reads all four from the audio thread, so they need
     // the exact same stop-before-reassign protection steps already had.
     void applyStepEdit(int trackIndex, const std::vector<Step>& steps,
@@ -714,8 +704,7 @@ private:
     // timbre, multiple notes tied together by one press, etc.) -- live
     // preview sounded authentic because the real pedal message reaches the
     // synth directly while playing, but the RECORDED result never
-    // reproduced it the same way ("サスティンをCCとして記録せずに、ただの
-    // 長いノートとして記録している？だとしたら仕様が全然違う"). Now
+    // reproduced it the same way. Now
     // PlaybackEngine::scheduleUpTo() resends the actual recorded CC64
     // events during playback, so it sounds the same both times.
     bool midiSustainPedalDown = false;
@@ -734,9 +723,8 @@ private:
     // normal way to end a take -- release the pedal, then hit stop) left
     // recordSustainPedalEvent()'s own isPlaying() gate silently dropping
     // that final release the instant the debounce timer got around to
-    // confirming it, moments after playback had already stopped ("Recの
-    // 時４小説目の最後のSustainは記録されなかった"). No-op if nothing is
-    // actually pending.
+    // confirming it, moments after playback had already stopped. No-op if
+    // nothing is actually pending.
     void forceConfirmPendingSustainRelease();
 
     // A real analog/half-damper pedal (confirmed via MIDI Monitor on a
@@ -759,9 +747,9 @@ private:
     // release" rule is structurally unable to keep this: a real repedal's
     // whole POINT is that the new press holds, so it always looks
     // identical to "the dip must have been noise" no matter how the
-    // window is sized ("サスティンが全然意図通りに入らない" -- confirmed:
+    // window is sized -- confirmed:
     // every deliberate repedal in a whole take was being silently merged
-    // into one unbroken sustain-on block).
+    // into one unbroken sustain-on block.
     //
     // Replaced with a single settle-window debounce instead: any raw
     // threshold-crossing (0 <-> nonzero, tracked in lastRawSustainDown,
@@ -794,7 +782,7 @@ private:
     // following).
     //
     // The >0 (not >=64) threshold below is unchanged from an earlier fix
-    // ("0とそれ以外でON/OFFを判定したら？") -- ordinary half-pedal wobble
+    // that judges on/off purely by zero vs. nonzero -- ordinary half-pedal wobble
     // on this hardware (20, 33, 42, 53, 70, 72, 74, 75, 78...) never
     // touches a literal 0, so it never even registers as a crossing here
     // in the first place; only real dips-to-zero (genuine releases or
@@ -825,7 +813,7 @@ private:
     // instant it saw CC64 cross below 64, including ones whose key was
     // still being genuinely, physically held down and had never actually
     // received a note-off at all -- not just the ones it was legitimately
-    // sustaining over ("Sustain OFFの時NoteもOFFされて聞こえる"). That's
+    // sustaining over. That's
     // not standard sustain-pedal behavior for any well-behaved instrument,
     // but there's no portable way to fix a specific plugin's own DSP/
     // scripting from here.
@@ -842,8 +830,7 @@ private:
     // processing every note-off immediately, exactly as before) -- an
     // earlier version of this whole feature deferred at THAT level
     // instead, which blocked Real-time REC's entire gesture/auto-commit
-    // pipeline for as long as the pedal stayed down ("弾いている時、Rec
-    // しているときはサスティンが効いているが、実際にはRecされない"); this
+    // pipeline for as long as the pedal stayed down; this
     // redesign can't reintroduce that bug because recording is completely
     // unaffected by it.
     //
@@ -852,8 +839,7 @@ private:
     // to the raw CC64=0 message itself, independent of any note-off at
     // all -- a note that is STILL being genuinely held (key never
     // released) was still getting cut the instant CC64=0 reached the
-    // synth ("Note ONが続いている中で、SUSTAINがOFFになると音が途切れる。
-    // NoteONである限り音は継続すべき"). A note that's still down should be
+    // synth. A note that's still down should be
     // completely unaffected by pedal state, by definition. Deferring the
     // forward here at the app level (an earlier attempt, since removed)
     // only ever covered THIS live-preview forward -- resolvePendingSustainCrossing()
@@ -887,10 +873,7 @@ private:
     // the most intuitive way to pick WHICH of a plugin's however-many
     // parameters you even want a lane for (moving the real knob IS the
     // parameter picker), after which the lane is just an automation lane
-    // like any other and the keyboard does the rest ("できたレーンは全て
-    // 同じ扱いにする。Touch入力をきっかけにレーンができたとしても、PC
-    // キーボードから調整や新たな点の追加はする。むしろ、Touch入力をするの
-    // は、どのプラグインのどのパラメータを操作したいのかを取り込むため").
+    // like any other and the keyboard does the rest.
     enum class AutomationLane { Sustain, PitchBend, FilterCutoff, Parameter };
     bool automationEditModeActive = false;
     AutomationLane automationEditLane = AutomationLane::Sustain;
@@ -916,8 +899,7 @@ private:
     // Also drives the ghost preview's incoming-segment shape
     // (StepGridComponent::setAutomationPendingCurveType()) so the shape
     // AND position of a not-yet-placed point can be judged together
-    // before committing ("終点を打つ前に...カーブの形と終点の位置を
-    // 決める方がユーザフレンドリーだと思う").
+    // before committing.
     AutomationCurveType pitchBendPendingCurveType = AutomationCurveType::Curve;
     AutomationCurveType filterCutoffPendingCurveType = AutomationCurveType::Curve;
     // The continuous curveAmount (-1..+1, see AutomationPoint's
@@ -928,8 +910,8 @@ private:
     // t/g's own value-adjust (the shortcut help text called it exactly
     // that), since a discrete 4-way Linear/EaseIn/EaseOut/Step cycle
     // turned out both hard to tell apart visually and too coarse to dial
-    // in a specific feel ("どちらかというとEaseIn,EaseOutの傾斜を調整
-    // できる必要がありそう"). See adjustAutomationPendingCurveAmount()'s
+    // in a specific feel, and adjusting the ease-in/ease-out slope needed
+    // its own dedicated input instead. See adjustAutomationPendingCurveAmount()'s
     // declaration.
     float pitchBendPendingCurveAmount = 0.0f;
     float filterCutoffPendingCurveAmount = 0.0f;
@@ -959,9 +941,8 @@ private:
     // Option+D ('direction' -1) / Option+F ('direction' +1) -- nudges
     // every point/event in effectiveSelectedAutomationSteps() one base
     // step left/right (all three lanes, including Sustain) -- see
-    // nudgeSelectedNotes()'s sibling declaration
-    // ("Option D, Fはノートや、おーとめーしょんのポイントを左右に移動
-    // する"). Landing exactly on another point's step overwrites it, same
+    // nudgeSelectedNotes()'s sibling declaration.
+    // Landing exactly on another point's step overwrites it, same
     // "later take wins" convention writeAutomationPoint() already uses.
     void nudgeSelectedAutomationPoints(int direction);
     // Toggles the curve TYPE (Curve/Step, see AutomationCurveType's
@@ -1003,8 +984,7 @@ private:
     // cursor (Sustain: sustainPedalEvents; PitchBend/FilterCutoff: their
     // own points vector) instead of the usual note/step navigation --
     // automation edit mode's own equivalent of d/f's normal "move to the
-    // next note" ("オートメーションレーンに言ったら、d fはオートメーションの
-    // ポイントを移動する"). Falls back to plain single-step movement when
+    // next note". Falls back to plain single-step movement when
     // the lane has no points at all yet (nothing to jump between), and
     // simply holds still past the first/last point in that direction
     // (no wraparound).
@@ -1014,8 +994,7 @@ private:
     // so hopping to the next point doesn't wipe out what's already
     // selected -- calling this WITH the default from there was a bug: it
     // silently capped the selection at one point no matter how many times
-    // Shift+D/F was pressed ("オートメーションのポイントのShift押しながら
-    // 複数選択").
+    // Shift+D/F was pressed.
     void moveCursorToAdjacentAutomationPoint(int direction, bool clearSelection = true);
     // The stepIndex of every point/event currently in automationEditLane
     // (Sustain: sustainPedalEvents; PitchBend/FilterCutoff: their own
@@ -1027,8 +1006,8 @@ private:
     // Automation edit mode's equivalents of extendNoteSelection()/
     // effectiveSelectedNoteStarts()/copySelectedNotes()/pasteNotesAtCursor()
     // -- same design, same keys (Shift+D/F, Cmd+C/V), just operating on
-    // multiSelectedAutomationSteps/automationClipboard instead
-    // ("複数選択+一括操作...揃えられるところは揃えたい"). direction: -1
+    // multiSelectedAutomationSteps/automationClipboard instead.
+    // direction: -1
     // (Shift+D) or +1 (Shift+F).
     void extendAutomationSelection(int direction);
     // What a following bulk action (delete/'a', value adjust/t,g, curve
@@ -1041,9 +1020,9 @@ private:
     // Shift+A's twin -- jumps to the clip's own effective end instead of
     // back to bar 1. Not automation-specific (plain moveCursor(), same as
     // Shift+A) but added alongside this feature since neither mode had a
-    // "jump to end" before now ("先頭/末尾へジャンプ...揃えられるところは
-    // 揃えたい" -- notes didn't have this either, so both gain it together
-    // rather than automation ending up with an ability notes still lack).
+    // "jump to end" before now -- notes didn't have this either, so both
+    // gain it together rather than automation ending up with an ability
+    // notes still lack.
     void jumpToClipEnd();                     // Cmd+Shift+A
 
     // Shared by both the manual editor above (unconditional -- drawing by
@@ -1089,10 +1068,9 @@ private:
     // them simultaneously (not just whichever lane Cmd+Ctrl+L currently
     // has selected -- parameterPendingValue above still tracks that one
     // alone, for keyboard-driven Cmd+Ctrl+Z/X editing), so all their
-    // points move/get shown together and Cmd+Ctrl+I commits every one of
-    // them at once ("プラグインから同時に複数のパラメータが変更される
-    // 場合は、変更される全ての点を動かす。レーンの外にあるパラメータも
-    // 動かす"). Cleared at the start of a genuinely fresh, unrelated touch
+    // points move/get shown together, even ones outside the currently
+    // selected lane, and Cmd+Ctrl+I commits every one of
+    // them at once. Cleared at the start of a genuinely fresh, unrelated touch
     // session (see audioProcessorParameterChangeGestureBegin()) so an old
     // abandoned preview never silently rides along into a much-later
     // Cmd+Ctrl+I; gestures that begin while another is already open (the
@@ -1102,8 +1080,7 @@ private:
     // filterCutoffPendingValue, which deliberately DO stick around after a
     // commit so the same single value can be placed again elsewhere, an
     // entire multi-parameter BATCH silently re-committing itself at every
-    // later cursor position/Cmd+Ctrl+I was surprising rather than useful
-    // ("一括して打てるけど、その後もcvでセットで動いてしまうのはなぜ？").
+    // later cursor position/Cmd+Ctrl+I was surprising rather than useful.
     // Any parameter still being actively touched re-populates its own
     // entry on its very next change regardless, so an in-progress gesture
     // is never affected by this clearing.
@@ -1130,9 +1107,8 @@ private:
     // (scroll position, open menus) rather than a freshly recreated editor.
     // pluginEditorDesiredVisible is a single GLOBAL on/off switch (NOT
     // remembered per track) -- once toggled off, no track's window shows
-    // again until explicitly toggled back on, even after switching tracks
-    // ("表示か非表示かを全体で決める。一度非表示にしたら他トラックでも
-    // 表示しない"). Only the CURRENT track's window is ever actually shown
+    // again until explicitly toggled back on, even after switching tracks.
+    // Only the CURRENT track's window is ever actually shown
     // even while this is on (see updatePluginEditorWindowVisibility()) --
     // this just decides whether that one window is allowed to show at all.
     std::map<int, std::unique_ptr<PluginEditorWindow>> pluginEditorWindowsByTrack;
@@ -1243,9 +1219,8 @@ private:
     // a note toward the grid line, as a percentage of the full distance from
     // its raw (as-played) position to the fully-snapped position. 100 =
     // snaps exactly onto the grid (the only behavior this app had before
-    // this feature). Lower values keep some of the original human timing
-    // ("クオンタイズ量の調整もできるようにしたい。25%, 50%, 75%, 100%の
-    // 4段階"). Only ever one of {25, 50, 75, 100}.
+    // this feature). Lower values keep some of the original human timing.
+    // Only ever one of {25, 50, 75, 100}.
     int quantizeAmountPercent = 100;
 
     // The gridSteps a manual '1'/'2'/'3' quantize was last invoked with
@@ -1262,8 +1237,7 @@ private:
     // is immediately run through quantizeSelectedNotesImpl(lastQuantizeGridSteps)
     // (same amount%/triplet settings as a manual quantize), so raw human
     // timing snaps to the grid automatically instead of needing a separate
-    // '1'/'2'/'3' press after every take ("Recording時に自動でクオンタイズ
-    // かけたいON/OFFしたい"). Off by default -- real-time REC's whole
+    // '1'/'2'/'3' press after every take. Off by default -- real-time REC's whole
     // appeal is capturing human timing in the first place, this is an
     // opt-in convenience for players who'd rather have it snapped
     // immediately. Manual/Step-auto REC are unaffected (their notes are
@@ -1288,8 +1262,7 @@ private:
     // ~30Hz timer jitter can't accumulate into audible drift over a long
     // hold). Only actually used while playbackEngine.isPlaying() is false
     // -- see lastNoteRepeatStepBucket below for the playing case, which is
-    // grid-locked instead of wall-clock-scheduled ("NoteRepeatはテンポと
-    // 同期する").
+    // grid-locked instead of wall-clock-scheduled.
     double noteRepeatNextTriggerMs = 0.0;
 
     // -1 = no repeat gesture currently tracked (same reset points as
@@ -1341,7 +1314,7 @@ private:
     // names; Auto means scaleRootPitchClass/scaleIsMinor are kept synced
     // to KeyEstimator's whole-piece estimate (see updateStepGridScale()),
     // rather than a fixed, manually-chosen key -- there's no longer a
-    // manual major/minor override ("キーの推定もして").
+    // manual major/minor override.
     enum class ScaleType { Auto, Off };
     ScaleType currentScaleType = ScaleType::Auto;
     int scaleRootPitchClass = 0; // 0 = C -- auto-updated, see above
@@ -1364,13 +1337,10 @@ private:
     // color out over the final ~pendingChordFadeMs (StepGridComponent::
     // setPreviewAlpha()) so a forgotten chord can't later be written in by
     // an unrelated commit action without the user ever noticing it was
-    // still sitting there ("MIDI入力、PC入力で保持したNoteは不意な操作で
-    // 変な音が入らないように3秒程度で消える...0.2秒程度のアニメーションで
-    // じんわりとNoteを示す色が消えて"). Fade duration bumped from the
-    // original 200ms -- reported as fading out a bit too fast
-    // ("あにめーしょんがちょっと早すぎる、もう少しだけゆっくり").
+    // still sitting there. Fade duration bumped from the
+    // original 200ms -- reported as fading out a bit too fast.
     double pendingChordIdleSinceMs = 0.0;
-    // Shortened from the original 3000ms -- "もう少し入力Noteの維持時間を短く".
+    // Shortened from the original 3000ms.
     static constexpr double pendingChordTimeoutMs = 2000.0;
     static constexpr double pendingChordFadeMs = 400.0;
 
@@ -1392,11 +1362,9 @@ private:
     // off) but its measured duration goes unused outside Real-time REC --
     // briefly made unconditional to fix two different pitches struck
     // together but released at different times sharing one flat duration
-    // in Real-time REC ("ピッチの違うノート同士でなぜかDurationが
-    // 引っ張られてしまう"), but that also made Step REC's own notes start
-    // carrying real key-hold timing instead of the duration preset
-    // ("ステップRecの時のDurationがなぜかリアルタイムになっている。指定
-    // した音価にしたい") -- Step REC has no real timing to preserve in the
+    // in Real-time REC, but that also made Step REC's own notes start
+    // carrying real key-hold timing instead of the duration preset --
+    // Step REC has no real timing to preserve in the
     // first place, so this only ever needed to apply during Real-time REC.
     std::map<int, double> heldNoteOnTimestamps;
 
@@ -1418,10 +1386,7 @@ private:
     //               button that begins actual real-time capture, which
     //               then commits to the step each gesture STARTED at (not
     //               wherever the edit cursor happens to be) -- see
-    //               realtimeRecordStep below ("Realtime Recはやっぱり別
-    //               モードで切り出したい。音を確認しながら、さて、録音、
-    //               という形でボタンひとつで始まるようにしたい。Rec前に
-    //               触るとStep入力されるのは良くない").
+    //               realtimeRecordStep below.
     enum class RecMode { Off, Manual, Auto, Realtime };
     RecMode recMode = RecMode::Off;
 
@@ -1440,9 +1405,8 @@ private:
     // gesture-end groups pendingChord by this instead of writing the whole
     // chord uniformly at realtimeRecordStep, so a note played partway
     // through a still-held chord lands at the step it was actually played
-    // at, instead of being pulled back to align with the first note
-    // ("後から入れたNoteの頭が、最初のNoteに合ってしまう...途中から入力
-    // したものは途中のタイミングがNoteオンになるべき"). Cleared alongside
+    // at, instead of being pulled back to align with the first note.
+    // Cleared alongside
     // pendingChord at the start of each new gesture. A pitch missing from
     // here (shouldn't normally happen) falls back to realtimeRecordStep.
     std::map<int, int> realtimeNoteOnsetSteps;

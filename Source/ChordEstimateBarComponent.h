@@ -70,8 +70,7 @@ public:
             // Degree name (e.g. "ii", "bVII") shown alongside the chord
             // symbol in parentheses when a key is set (see
             // ChordEstimate::degreeLabel's declaration) -- empty otherwise,
-            // so nothing changes when no key is selected
-            // ("コードの表示はディグリーネームと併記する").
+            // so nothing changes when no key is selected.
             auto displayText = chordEstimate.degreeLabel.isNotEmpty()
                 ? chordEstimate.label + " (" + chordEstimate.degreeLabel + ")"
                 : chordEstimate.label;

@@ -26,8 +26,7 @@
 // deliberately NOT included here -- they're needed as plain-key editing
 // shortcuts (Set Clip End, Jump Back 1 Bar, Tie, Toggle Triplet Quantize)
 // now that this map has no modifier of its own to disambiguate against
-// them, so every row starts one key later than it used to
-// ("クロマチック入力の開始をNにする。B,G,T,5は他のショートカットに当てる").
+// them, so every row starts one key later than it used to.
 inline const std::map<char, int>& virtualKeyboardKeyMap()
 {
     static const std::map<char, int> map = {
@@ -44,9 +43,8 @@ inline const std::map<char, int>& virtualKeyboardKeyMap()
 // (see MainEditorComponent::toggleDrumGridMode()), not a second modifier
 // tier anymore. Right-hand-reachable on purpose, same as the melodic
 // keyboard -- the left hand stays on editing commands, so both note-
-// PERFORMANCE inputs (drums and the chromatic keyboard) live on the right
-// ("左手に寄せるのはドラムパッドやクロマチック鍵盤以外...ドラムやけんばんは
-// 右手にしたい"). Several physical keys are shared with the melodic map
+// PERFORMANCE inputs (drums and the chromatic keyboard) live on the right.
+// Several physical keys are shared with the melodic map
 // above (M, J, K, L, U, I, O, P, comma, period, slash, semicolon, 6-9, 0)
 // -- harmless, since only one of the two maps is ever polled at a time.
 //
@@ -59,8 +57,7 @@ inline const std::map<char, int>& virtualKeyboardKeyMap()
 // ("C2" to "D#3"). Each row starts one key further left than a plain
 // "M J U 7" grid would, so the bottom row's first pad is 'N' -- the same
 // starting key as the melodic keyboard above, for a consistent "where do I
-// put my hand" reference between the two modes
-// ("DrumPadの開始もNからにして左に全体をシフト").
+// put my hand" reference between the two modes.
 inline const std::map<char, int>& virtualDrumKeyMap()
 {
     static const std::map<char, int> map = {

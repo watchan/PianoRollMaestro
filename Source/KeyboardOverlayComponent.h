@@ -25,8 +25,7 @@ public:
     // matches MainEditorComponent::drumGridModeActive (Enter toggles it).
     // keyRootPitchClassIn/keyShownIn: MainEditorComponent::scaleRootPitchClass
     // and (currentScaleType != Off) -- when shown, every melodic-keyboard key
-    // whose note is the estimated key's root gets a distinct highlight colour
-    // ("Rootのキーの色を変えて。ルートがわかるように").
+    // whose note is the estimated key's root gets a distinct highlight colour.
     KeyboardOverlayComponent(std::function<bool()> isSessionViewIn,
                               std::function<int()> recModeIn,
                               std::function<int()> transposeSemitonesIn,

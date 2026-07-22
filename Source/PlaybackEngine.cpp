@@ -49,9 +49,8 @@ void PlaybackEngine::ensureTrackAudioStates()
     // scheduleUpTo()), not just a stutter -- it only started actually
     // surfacing once addTrack() stopped calling stop() unconditionally,
     // since stop()-then-Space-to-resume used to always resize this vector
-    // via start()'s own trackCursors.assign(), masking the gap
-    // ("再生中にトラック追加で処理落ちするのは治ってない。アプリ立ち上げの
-    // 状態でも強制終了される"). A new cursor starts at step 0, synced to
+    // via start()'s own trackCursors.assign(), masking the gap. A new
+    // cursor starts at step 0, synced to
     // the transport's current sample position, same as any freshly-started
     // track.
     while (trackCursors.size() < project->tracks.size())
@@ -210,9 +209,9 @@ void PlaybackEngine::performForceStop()
             // Notes-Off/All-Sound-Off controller messages at all (their
             // own internal voice allocator only ever listens for a
             // genuine per-note Note Off), so the blanket messages alone
-            // can silently do nothing against one of those ("プラグインが
-            // わがNote OFFを受けないとなりっぱなしになるタイプだと、再生
-            // して停止した時になりっぱなしになってしまう").
+            // can silently do nothing against one of those -- a plugin
+            // that doesn't honor a bare Note Off can get stuck sounding
+            // a note after playback stops.
             for (int p = 0; p < 128; ++p)
                 if (state.activeNotePitches[(size_t) p])
                     allNotesOffMidi.addEvent(juce::MidiMessage::noteOff(1, p), 0);
@@ -614,11 +613,9 @@ void PlaybackEngine::scheduleUpTo(int64_t blockEndSample)
                     // some plugins (a strumming guitar instrument was the
                     // one that surfaced this) audibly glitch on a same-
                     // sample note-off/note-on collision instead of cutting
-                    // cleanly -- "1小節目と2小節目の間で少し変な音が入る
-                    // ...1小節目の終わりが重なりすぎている". A pure fraction
-                    // of a step turned out too small to actually be heard/
-                    // felt at normal tempos ("まだちょっとぶつかっている
-                    // 感じある") -- floored at ~30ms of wall-clock time
+                    // cleanly. A pure fraction of a step turned out too small
+                    // to actually be heard/felt at normal tempos -- floored
+                    // at ~30ms of wall-clock time
                     // instead, capped to at most half the container's own
                     // length so a very short note can't be trimmed to
                     // nothing.
@@ -649,9 +646,8 @@ void PlaybackEngine::scheduleUpTo(int64_t blockEndSample)
                         // later in an ordinary overlapping/legato passage --
                         // an everyday occurrence, not a conflict -- silently
                         // chopping a properly-recorded ~quarter-note-long
-                        // note down to just a few milliseconds ("普通に
-                        // 一小節目の一拍目は、四分音符分くらいあるでしょ" --
-                        // confirmed via diagnostic log: durationSteps=855
+                        // note down to just a few milliseconds (confirmed
+                        // via diagnostic log: durationSteps=855
                         // recorded correctly, but the envelope had been
                         // truncated to 21 steps by an unrelated note, and
                         // playback was clamping to that 21-step envelope).
@@ -871,8 +867,7 @@ void PlaybackEngine::renderNextBlock(juce::AudioBuffer<float>& audioOut, juce::M
         // version started playback the instant the 4th click fired (i.e. at
         // the start of beat 4), so the song's own beat 1 landed right on top
         // of the count-in's 4th click instead of one full beat later, where
-        // beat 5 would have been ("4拍数えて、5拍目が一拍目にならないと。
-        // 今は4拍目が一拍目に聞こえる").
+        // beat 5 would have been.
         if (countInSamplePosition >= countInBeatsTotal * countInBeatSamples)
             start(countInPendingStartStep);
     }
@@ -894,9 +889,8 @@ void PlaybackEngine::renderNextBlock(juce::AudioBuffer<float>& audioOut, juce::M
         // notes near the clip's end happen to still be ringing) rather than
         // a fixed point in time -- so the amount of overrun before it
         // actually wrapped varied pass to pass, which read as the beat
-        // itself drifting/wobbling rather than a small constant offset
-        // ("クリップ終わりでループで戻る時拍が一定じゃない。乱れる"). Both
-        // loop kinds now compute a fixed wrapSample up front here instead.
+        // itself drifting/wobbling rather than a small constant offset.
+        // Both loop kinds now compute a fixed wrapSample up front here instead.
         int64_t wrapSample = -1;
         int wrapTargetStep = 0;
 
